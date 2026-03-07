@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Dashboard — Robux Gratis</title>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { getFirestore, collection, getDocs, deleteDoc, doc, orderBy, query } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyCsMXNyb8EDDEymYc-dtC9eZx8qorgmyV8",
+    authDomain: "robux-gratis-id.firebaseapp.com",
+    projectId: "robux-gratis-id",
+    storageBucket: "robux-gratis-id.firebasestorage.app",
+    messagingSenderId: "390349916559",
+    appId: "1:390349916559:web:b03289e638a0f46fcda3fa"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+  const provider = new GoogleAuthProvider();
+
+  // GANTI DENGAN EMAIL GOOGLE KAMU!
+  const ADMIN_EMAIL = "roichannoob@gmail.com";
+
+  window._login = async () => {
+    try {
+      await signInWithPopup(auth, provider);
+    } catch(e) { alert("Login gagal: " + e.message); }
+  };
+
+  window._logout = async () => {
+    await signOut(auth);
+  };
+
+  window._deleteKlaim = async (id) => {
+    if (!confirm("Hapus data ini?")) return;
+    await deleteDoc(doc(db, "klaim", id));
+    window._loadData();
+  };
+
+  window._loadData = async () => {
+    const loading = document.getElementById('loading');
+    const tableWrap = document.getElementById('tableWrap');
+    loading.classList.remove('hidden');
+    tableWrap.classList.add('hidden');
+
+    try {
+      const q = query(collection(db, "klaim"), orderBy("timestamp", "desc"));
+      const snap = await getDocs(q);
+      const docs = [];
+      snap.forEach(d => docs.push({ id: d.id, ...d.data() }));
+
+      // Stats
+      document.getElementById('statTotal').textContent = docs.length;
+      const today = new Date().toLocaleDateString('id-ID');
+      const todayCount = docs.filter(d => d.tanggal && d.tanggal.startsWith(today.split('/').reverse().join('/'))).length;
+      document.getElementById('statToday').textContent = todayCount;
+
+      // Hitung per hari
+      const perHari = {};
+      docs.forEach(d => {
+        if (d.tanggal) {
+          const tgl = d.tanggal.split(',')[0];
+          perHari[tgl] = (perHari[tgl] || 0) + 1;
+        }
+      });
+      const hariTerbanyak = Object.entries(perHari).sort((a,b)=>b[1]-a[1])[0];
+      document.getElementById('statBest').textContent = hariTerbanyak ? `${hariTerbanyak[1]} klaim` : '—';
+
+      // Render table
+      const tbody = document.getElementById('tbody');
+      if (docs.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:32px;color:#aaa;font-weight:700;">Belum ada data klaim 😊</td></tr>`;
+      } else {
+        tbody.innerHTML = docs.map((d, i) => `
+          <tr>
+            <td>
+              <div style="display:flex;align-items:center;gap:10px;">
+                <img src="${d.avatarUrl || ''}" onerror="this.src='https://www.roblox.com/headshot-thumbnail/image?userId=${d.userId}&width=60&height=60&format=png'" style="width:40px;height:40px;border-radius:10px;border:2px solid #ff4757;object-fit:cover;" />
+                <div>
+                  <div style="font-weight:800;font-size:14px;">${d.username || '—'}</div>
+                  <div style="font-size:11px;color:#aaa;">ID: ${d.userId || '—'}</div>
+                </div>
+              </div>
+            </td>
+            <td style="font-size:12px;color:#666;font-weight:600;">${d.tanggal || '—'}</td>
+            <td><span style="background:#eafff4;color:#0d7a46;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:800;">✅ Klaim</span></td>
+            <td>
+              <button onclick="window._deleteKlaim('${d.id}')" style="background:#fff0f0;color:#ff4757;border:1.5px solid #ffd6d6;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:800;cursor:pointer;">🗑 Hapus</button>
+            </td>
+          </tr>
+        `).join('');
+      }
+
+      loading.classList.add('hidden');
+      tableWrap.classList.remove('hidden');
+    } catch(e) {
+      loading.innerHTML = `<p style="color:red;font-weight:700;">Error: ${e.message}</p>`;
+    }
+  };
+
+  onAuthStateChanged(auth, (user) => {
+    const loginPage = document.getElementById('loginPage');
+    const dashboard = document.getElementById('dashboard');
+    const notAdmin = document.getElementById('notAdmin');
+
+    if (user) {
+      if (user.email === ADMIN_EMAIL) {
+        loginPage.classList.add('hidden');
+        notAdmin.classList.add('hidden');
+        dashboard.classList.remove('hidden');
+        document.getElementById('adminName').textContent = user.displayName;
+        document.getElementById('adminEmail').textContent = user.email;
+        document.getElementById('adminPhoto').src = user.photoURL;
+        window._loadData();
+      } else {
+        loginPage.classList.add('hidden');
+        dashboard.classList.add('hidden');
+        notAdmin.classList.remove('hidden');
+      }
+    } else {
+      loginPage.classList.remove('hidden');
+      dashboard.classList.add('hidden');
+      notAdmin.classList.add('hidden');
+    }
+  });
+</script>
+<style>
+  :root {
+    --red: #ff4757; --green: #2ed573;
+    --bg: #0f1117; --card: #1a1d27; --border: #2a2d3d;
+    --text: #e8eaf6; --muted: #6b7280;
+    --accent: #ff4757;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Nunito', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  /* LOGIN PAGE */
+  .login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  .login-box { background: var(--card); border: 1.5px solid var(--border); border-radius: 28px; padding: 48px 36px; text-align: center; max-width: 400px; width: 100%; box-shadow: 0 20px 60px rgba(0,0,0,0.4); }
+  .login-icon { font-size: 64px; margin-bottom: 16px; }
+  .login-box h1 { font-size: 1.8rem; font-weight: 900; color: var(--text); }
+  .login-box p { font-size: 14px; color: var(--muted); margin: 8px 0 32px; font-weight: 600; }
+  .btn-google { display: inline-flex; align-items: center; gap: 12px; background: white; color: #333; border: none; border-radius: 14px; padding: 14px 28px; font-family: 'Nunito', sans-serif; font-size: 15px; font-weight: 800; cursor: pointer; transition: transform .2s, box-shadow .2s; box-shadow: 0 4px 16px rgba(0,0,0,0.2); width: 100%; justify-content: center; }
+  .btn-google:hover { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(0,0,0,0.3); }
+  .btn-google img { width: 22px; }
+
+  /* NOT ADMIN */
+  .notadmin-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  .notadmin-box { background: var(--card); border: 1.5px solid #3d1a1a; border-radius: 28px; padding: 48px 36px; text-align: center; max-width: 400px; width: 100%; }
+
+  /* DASHBOARD */
+  .topbar { background: var(--card); border-bottom: 1.5px solid var(--border); padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .topbar-left { display: flex; align-items: center; gap: 12px; }
+  .topbar-logo { font-size: 24px; }
+  .topbar-title { font-size: 1.1rem; font-weight: 900; color: var(--text); }
+  .topbar-sub { font-size: 11px; color: var(--muted); font-weight: 600; }
+  .admin-info { display: flex; align-items: center; gap: 10px; }
+  .admin-photo { width: 36px; height: 36px; border-radius: 50%; border: 2px solid var(--red); }
+  .admin-name { font-size: 13px; font-weight: 800; color: var(--text); }
+  .admin-email { font-size: 11px; color: var(--muted); font-weight: 600; }
+  .btn-logout { background: #2a1a1a; color: var(--red); border: 1.5px solid #3d1a1a; border-radius: 10px; padding: 8px 16px; font-family: 'Nunito', sans-serif; font-size: 13px; font-weight: 800; cursor: pointer; }
+
+  .content { max-width: 1000px; margin: 0 auto; padding: 24px 16px; }
+
+  /* STATS */
+  .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 24px; }
+  .stat-card { background: var(--card); border: 1.5px solid var(--border); border-radius: 18px; padding: 20px; text-align: center; }
+  .stat-num { font-size: 2.2rem; font-weight: 900; color: var(--red); letter-spacing: -1px; }
+  .stat-lbl { font-size: 11px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }
+
+  /* TABLE */
+  .table-card { background: var(--card); border: 1.5px solid var(--border); border-radius: 18px; overflow: hidden; }
+  .table-header { display: flex; align-items: center; justify-content: space-between; padding: 18px 20px; border-bottom: 1.5px solid var(--border); flex-wrap: wrap; gap: 10px; }
+  .table-title { font-size: 1rem; font-weight: 900; color: var(--text); }
+  .btn-refresh { background: #1a2a1a; color: var(--green); border: 1.5px solid #1a3a1a; border-radius: 10px; padding: 8px 16px; font-family: 'Nunito', sans-serif; font-size: 13px; font-weight: 800; cursor: pointer; }
+  .btn-refresh:hover { background: #1e3a1e; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th { padding: 12px 16px; text-align: left; font-size: 11px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1.5px solid var(--border); }
+  td { padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,0.04); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+
+  .loading { padding: 48px; text-align: center; color: var(--muted); font-weight: 700; font-size: 14px; }
+  .hidden { display: none !important; }
+
+  @media(max-width:500px) {
+    .stats-grid { grid-template-columns: repeat(3,1fr); gap: 8px; }
+    .stat-num { font-size: 1.6rem; }
+    th:nth-child(2), td:nth-child(2), th:nth-child(3), td:nth-child(3) { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="loginPage" class="login-wrap">
+  <div class="login-box">
+    <div class="login-icon">🔐</div>
+    <h1>Admin Dashboard</h1>
+    <p>Login dengan akun Google admin untuk mengakses dashboard</p>
+    <button class="btn-google" onclick="window._login()">
+      <img src="https://www.google.com/favicon.ico" alt="Google" />
+      Login dengan Google
+    </button>
+  </div>
+</div>
+
+<!-- NOT ADMIN -->
+<div id="notAdmin" class="notadmin-wrap hidden">
+  <div class="notadmin-box">
+    <div style="font-size:64px;margin-bottom:16px;">🚫</div>
+    <h1 style="font-size:1.5rem;font-weight:900;color:#ff4757;margin-bottom:8px;">Akses Ditolak</h1>
+    <p style="color:var(--muted);font-size:14px;margin-bottom:24px;font-weight:600;">Akun kamu bukan admin. Gunakan akun Google yang benar.</p>
+    <button class="btn-google" onclick="window._logout()">🔙 Ganti Akun</button>
+  </div>
+</div>
+
+<!-- DASHBOARD -->
+<div id="dashboard" class="hidden">
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="topbar-logo">🎮</div>
+      <div>
+        <div class="topbar-title">Robux Gratis — Admin</div>
+        <div class="topbar-sub">Dashboard monitoring klaim</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+      <div class="admin-info">
+        <img class="admin-photo" id="adminPhoto" src="" alt="admin" />
+        <div>
+          <div class="admin-name" id="adminName">—</div>
+          <div class="admin-email" id="adminEmail">—</div>
+        </div>
+      </div>
+      <button class="btn-logout" onclick="window._logout()">Logout</button>
+    </div>
+  </div>
+
+  <div class="content">
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-num" id="statTotal">—</div>
+        <div class="stat-lbl">Total Klaim</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num" id="statToday">—</div>
+        <div class="stat-lbl">Hari Ini</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num" id="statBest">—</div>
+        <div class="stat-lbl">Terbanyak</div>
+      </div>
+    </div>
+
+    <div class="table-card">
+      <div class="table-header">
+        <div class="table-title">📋 Daftar Klaim Username</div>
+        <button class="btn-refresh" onclick="window._loadData()">🔄 Refresh</button>
+      </div>
+      <div id="loading" class="loading">⏳ Memuat data...</div>
+      <div id="tableWrap" class="hidden">
+        <table>
+          <thead>
+            <tr>
+              <th>Username</th>
+              <th>Waktu Klaim</th>
+              <th>Status</th>
+              <th>Aksi</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+  </html>
+  
