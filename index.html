@@ -283,8 +283,19 @@
     btn.disabled = true;
     btn.innerHTML = '⏳ Mengecek username...';
     try {
-      const res = await fetch(`https://api.roblox.com/users/get-by-username?username=${encodeURIComponent(val)}`);
-      const data = await res.json();
+      const proxies = [
+        `https://api.allorigins.win/raw?url=${encodeURIComponent('https://api.roblox.com/users/get-by-username?username='+val)}`,
+        `https://corsproxy.io/?https://api.roblox.com/users/get-by-username?username=${encodeURIComponent(val)}`
+      ];
+      let data = null;
+      for (const url of proxies) {
+        try {
+          const r = await fetch(url);
+          const d = await r.json();
+          if (d && (d.Id || d.errorMessage)) { data = d; break; }
+        } catch(e) { continue; }
+      }
+      if (!data) throw new Error('Semua proxy gagal');
       if (data.errorMessage || !data.Id) {
         inp.classList.add('err');
         errEl.textContent = `❌ Username "${val}" tidak ditemukan di Roblox!`;
@@ -365,5 +376,4 @@
   }
 </script>
 </body>
-  </html>
-  
+</html>
