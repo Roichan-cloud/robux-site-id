@@ -70,13 +70,18 @@
       el.innerHTML = `<div style="text-align:center;color:var(--muted);font-size:13px;font-weight:700;padding:12px 0;">Jadilah yang pertama klaim! 🎉</div>`;
       return;
     }
-    el.innerHTML = docs.map((d, i) => `
-      <div class="lb-item">
-        <div class="lb-rank">${['🥇','🥈','🥉','4️⃣','5️⃣'][i]||'—'}</div>
-        ${d.avatarUrl ? `<img src="${d.avatarUrl}" class="lb-avatar" onerror="this.style.display='none'" />` : `<div class="lb-avatar-empty">👤</div>`}
-        <div class="lb-name">${d.username||'—'}</div>
-        <div class="lb-badge">💎 50 Rbx</div>
-      </div>`).join('');
+    el.innerHTML = docs.map((d, i) => {
+      // Sensor username: tampilkan 2 huruf pertama + bintang
+      const name = d.username || '???';
+      const masked = name.slice(0, 2) + '***';
+      return `
+        <div class="lb-item">
+          <div class="lb-rank">${['🥇','🥈','🥉','4️⃣','5️⃣'][i]||'—'}</div>
+          <div class="lb-avatar-anon">👤</div>
+          <div class="lb-name">${masked}</div>
+          <div class="lb-badge">💎 50 Rbx</div>
+        </div>`;
+    }).join('');
   }
 
   // ===== CEK STATUS PERMINTAAN =====
@@ -277,6 +282,7 @@
   .lb-rank { font-size:18px;min-width:28px; }
   .lb-avatar { width:36px;height:36px;border-radius:10px;border:2px solid var(--border);object-fit:cover; }
   .lb-avatar-empty { width:36px;height:36px;border-radius:10px;background:var(--bg);border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:16px; }
+  .lb-avatar-anon { width:36px;height:36px;border-radius:10px;background:var(--bg);border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0; }
   .lb-name { font-size:14px;font-weight:800;color:var(--text);flex:1; }
   .lb-badge { font-size:11px;font-weight:800;color:var(--primary);background:#e8fff2;border-radius:50px;padding:3px 9px; }
 
@@ -644,8 +650,8 @@
       const el = document.getElementById(current);
       el.classList.add('exit');
       setTimeout(() => { el.classList.add('hidden'); el.classList.remove('exit'); showCard(id); }, 220);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } else { showCard(id); }
-    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
   function showCard(id) {
     CARDS.forEach(c => document.getElementById(c).classList.add('hidden'));
