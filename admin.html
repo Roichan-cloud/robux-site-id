@@ -7,7 +7,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getAuth, GoogleAuthProvider, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   import { getFirestore, collection, getDocs, deleteDoc, doc, updateDoc, setDoc, getDoc, orderBy, query } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
   const firebaseConfig = {
@@ -24,11 +24,10 @@
   const db = getFirestore(app);
   const provider = new GoogleAuthProvider();
 
-  // Gunakan UID bukan email - lebih aman
-  const ADMIN_UID = "qiRgq9L1jCXSWzGdptDEKLtdPSj2";
+  const ADMIN_EMAIL = "roichannoob@gmail.com";
 
   window._login = async () => {
-    try { await signInWithRedirect(auth, provider); }
+    try { await signInWithPopup(auth, provider); }
     catch(e) { alert("Login gagal: " + e.message); }
   };
 
@@ -220,7 +219,7 @@
     const dashboard = document.getElementById('dashboard');
     const notAdmin = document.getElementById('notAdmin');
     if (user) {
-      if (user.uid === ADMIN_UID) {
+      if (user.email === ADMIN_EMAIL) {
         loginPage.classList.add('hidden'); notAdmin.classList.add('hidden');
         dashboard.classList.remove('hidden');
         document.getElementById('adminName').textContent = user.displayName;
