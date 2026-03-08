@@ -86,10 +86,18 @@
   // ===== CEK STATUS PERMINTAAN =====
   window._cekStatus = async function(username) {
     try {
-      const q = query(collection(db, "permintaan"), where("usernameLower", "==", username.toLowerCase()), orderBy("timestamp", "desc"), limit(1));
+      const q = query(collection(db, "permintaan"), where("usernameLower", "==", username.toLowerCase()));
       const snap = await getDocs(q);
       if (snap.empty) return { found: false };
-      return { found: true, ...snap.docs[0].data() };
+      // Ambil yang terbaru manual
+      const docs = [];
+      snap.forEach(d => docs.push(d.data()));
+      docs.sort((a, b) => {
+        const ta = a.timestamp?.toMillis?.() ?? 0;
+        const tb = b.timestamp?.toMillis?.() ?? 0;
+        return tb - ta;
+      });
+      return { found: true, ...docs[0] };
     } catch(e) { return { found: false }; }
   };
 
@@ -666,10 +674,13 @@
   }
 
   function showCard(id, enterClass) {
-    CARDS.forEach(c => document.getElementById(c).classList.add('hidden'));
+    // Sembunyikan semua card KECUALI yang mau ditampilkan
+    CARDS.forEach(c => { if (c !== id) document.getElementById(c).classList.add('hidden'); });
     const el = document.getElementById(id);
-    el.classList.remove('hidden', 'enter-right', 'enter-left', 'exit-left', 'exit-right');
-    void el.offsetWidth;
+    // Reset animasi dulu tanpa hidden biar tidak kedip
+    el.classList.remove('enter-right', 'enter-left', 'exit-left', 'exit-right');
+    el.classList.remove('hidden');
+    void el.offsetWidth; // reflow
     el.classList.add(enterClass || 'enter-right');
   }
 
