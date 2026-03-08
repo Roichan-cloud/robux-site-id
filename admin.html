@@ -8,7 +8,7 @@
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-  import { getFirestore, collection, getDocs, deleteDoc, doc, updateDoc, orderBy, query } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import { getFirestore, collection, getDocs, deleteDoc, doc, updateDoc, setDoc, getDoc, orderBy, query } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyCsMXNyb8EDDEymYc-dtC9eZx8qorgmyV8",
@@ -24,8 +24,8 @@
   const db = getFirestore(app);
   const provider = new GoogleAuthProvider();
 
-  // GANTI DENGAN EMAIL GOOGLE KAMU!
-  const ADMIN_EMAIL = "roichannoob@gmail.com";
+  // Gunakan UID bukan email - lebih aman
+  const ADMIN_UID = "qiRgq9L1jCXSWzGdptDEKLtdPSj2";
 
   window._login = async () => {
     try { await signInWithPopup(auth, provider); }
@@ -144,7 +144,68 @@
     } catch(e) { loading.innerHTML = `<p style="color:red;padding:20px;">Error: ${e.message}</p>`; }
   };
 
-  window._switchTab = (tab) => {
+  window._loadEvent = async () => {
+    try {
+      const snap = await getDoc(doc(db, "config", "event"));
+      if (snap.exists() && snap.data().active) {
+        const d = snap.data();
+        document.getElementById('evRobux').value = d.robux || '';
+        document.getElementById('evMax').value = d.maxPeserta || '';
+        document.getElementById('evStatus').innerHTML = `<span style="background:#e8fff2;color:#0a6e3a;padding:5px 14px;border-radius:20px;font-size:13px;font-weight:800;">🟢 Event Aktif — ${d.robux} Robux — ${d.pesertaCount||0}/${d.maxPeserta} peserta</span>`;
+        document.getElementById('btnAktifkan').classList.add('hidden');
+        document.getElementById('btnMatikan').classList.remove('hidden');
+      } else {
+        document.getElementById('evStatus').innerHTML = `<span style="background:#2a2a2a;color:#aaa;padding:5px 14px;border-radius:20px;font-size:13px;font-weight:800;">⚫ Tidak Ada Event Aktif</span>`;
+        document.getElementById('btnAktifkan').classList.remove('hidden');
+        document.getElementById('btnMatikan').classList.add('hidden');
+      }
+    } catch(e) {}
+
+    // Load peserta event
+    try {
+      const q = query(collection(db, "event_klaim"), orderBy("timestamp", "desc"));
+      const snap = await getDocs(q);
+      const docs = [];
+      snap.forEach(d => docs.push({ id: d.id, ...d.data() }));
+      const tbody = document.getElementById('tbodyEvent');
+      if (docs.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:32px;color:#aaa;font-weight:700;">Belum ada peserta event 😊</td></tr>`;
+      } else {
+        tbody.innerHTML = docs.map(d => `
+          <tr>
+            <td>
+              <div style="display:flex;align-items:center;gap:10px;">
+                <img src="${d.avatarUrl||''}" onerror="this.style.display='none'" style="width:40px;height:40px;border-radius:10px;border:2px solid #ff4757;object-fit:cover;" />
+                <div><div style="font-weight:800;font-size:14px;">${d.username||'—'}</div><div style="font-size:11px;color:#aaa;">${d.tanggal||'—'}</div></div>
+              </div>
+            </td>
+            <td><span style="background:#fff5f5;color:#ff4757;padding:4px 10px;border-radius:20px;font-size:13px;font-weight:900;">⚡ ${d.robux} Robux</span></td>
+            <td style="font-size:11px;color:#aaa;">${d.eventId||'—'}</td>
+          </tr>`).join('');
+      }
+    } catch(e) {}
+  };
+
+  window._aktifkanEvent = async () => {
+    const robux = document.getElementById('evRobux').value.trim();
+    const max = document.getElementById('evMax').value.trim();
+    if (!robux || !max || isNaN(robux) || isNaN(max)) { alert('Isi jumlah Robux dan max peserta dengan angka!'); return; }
+    const eventId = 'event_' + Date.now();
+    await setDoc(doc(db, "config", "event"), {
+      active: true, robux: parseInt(robux), maxPeserta: parseInt(max),
+      pesertaCount: 0, eventId,
+      mulai: new Date().toLocaleString('id-ID')
+    });
+    alert('✅ Event dadakan aktif!');
+    window._loadEvent();
+  };
+
+  window._matikanEvent = async () => {
+    if (!confirm('Matikan event sekarang?')) return;
+    await setDoc(doc(db, "config", "event"), { active: false }, { merge: true });
+    alert('Event dimatikan.');
+    window._loadEvent();
+  };
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
     document.getElementById('tab-'+tab).classList.add('active');
@@ -156,7 +217,7 @@
     const dashboard = document.getElementById('dashboard');
     const notAdmin = document.getElementById('notAdmin');
     if (user) {
-      if (user.email === ADMIN_EMAIL) {
+      if (user.uid === ADMIN_UID) {
         loginPage.classList.add('hidden'); notAdmin.classList.add('hidden');
         dashboard.classList.remove('hidden');
         document.getElementById('adminName').textContent = user.displayName;
@@ -164,6 +225,7 @@
         document.getElementById('adminPhoto').src = user.photoURL;
         window._loadKlaim();
         window._loadPermintaan();
+        window._loadEvent();
       } else {
         loginPage.classList.add('hidden'); dashboard.classList.add('hidden');
         notAdmin.classList.remove('hidden');
@@ -275,6 +337,7 @@
     <div class="tabs">
       <button class="tab-btn active" id="tab-klaim" onclick="window._switchTab('klaim')">📋 Daftar Klaim</button>
       <button class="tab-btn" id="tab-permintaan" onclick="window._switchTab('permintaan')">📨 Permintaan</button>
+      <button class="tab-btn" id="tab-event" onclick="window._switchTab('event')">⚡ Event</button>
     </div>
 
     <!-- TAB KLAIM -->
@@ -302,8 +365,39 @@
         <tbody id="tbodyReq"></tbody></table>
       </div>
     </div>
-  </div>
+    <!-- TAB EVENT -->
+    <div id="content-event" class="tab-content hidden" style="margin-top:0;">
+      <!-- Event Control -->
+      <div style="background:var(--card);border:1.5px solid var(--border);border-radius:18px;padding:24px;margin-bottom:16px;">
+        <div style="font-size:1rem;font-weight:900;margin-bottom:16px;">⚡ Kontrol Event Dadakan</div>
+        <div id="evStatus" style="margin-bottom:18px;"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+          <div>
+            <label style="font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:6px;">Jumlah Robux</label>
+            <input id="evRobux" type="number" placeholder="Contoh: 100" style="width:100%;padding:12px 14px;background:#0f1117;border:2px solid var(--border);border-radius:12px;color:var(--text);font-family:'Nunito',sans-serif;font-size:16px;font-weight:700;outline:none;" />
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:6px;">Max Peserta</label>
+            <input id="evMax" type="number" placeholder="Contoh: 10" style="width:100%;padding:12px 14px;background:#0f1117;border:2px solid var(--border);border-radius:12px;color:var(--text);font-family:'Nunito',sans-serif;font-size:16px;font-weight:700;outline:none;" />
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;">
+          <button id="btnAktifkan" onclick="window._aktifkanEvent()" style="flex:1;padding:13px;background:linear-gradient(135deg,#ff4757,#ff6b35);color:white;border:none;border-radius:12px;font-family:'Nunito',sans-serif;font-size:14px;font-weight:800;cursor:pointer;">🔥 Aktifkan Event</button>
+          <button id="btnMatikan" onclick="window._matikanEvent()" class="hidden" style="flex:1;padding:13px;background:#2a1a1a;color:#ff4757;border:1.5px solid #3d1a1a;border-radius:12px;font-family:'Nunito',sans-serif;font-size:14px;font-weight:800;cursor:pointer;">⛔ Matikan Event</button>
+        </div>
+      </div>
+      <!-- Peserta Event -->
+      <div class="table-card">
+        <div class="table-header">
+          <div class="table-title">⚡ Peserta Event</div>
+          <button class="btn-refresh" onclick="window._loadEvent()">🔄 Refresh</button>
+        </div>
+        <table><thead><tr><th>Username</th><th>Robux</th><th>Event ID</th></tr></thead>
+        <tbody id="tbodyEvent"></tbody></table>
+      </div>
+    </div>
+</html>
+</div>
 </div>
 
 </body>
-</html>
