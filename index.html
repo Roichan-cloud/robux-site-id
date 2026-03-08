@@ -83,6 +83,7 @@
     const banner = document.getElementById('eventBanner');
     if (!banner) return;
     document.getElementById('eventRobux').textContent = data.robux || '?';
+    document.getElementById('eventRobux').dataset.gamepass = data.gamepassHarga || '';
     document.getElementById('eventSisa').textContent = (data.maxPeserta - (data.pesertaCount || 0));
     document.getElementById('eventMax').textContent = data.maxPeserta;
     banner.classList.remove('hidden');
@@ -334,11 +335,11 @@
     <div class="c-sub">Ikuti tutorial di bawah untuk mendapatkan Robux kamu</div>
     <div class="avatar-card" id="avatarCard">
       <div class="avatar-skeleton" id="avatarSkeleton"></div>
-      <div><div class="u-name" id="showUser">—</div><div class="u-sub">✅ Siap Klaim Robux</div></div>
+      <div><div class="u-name" id="showUser">—</div><div class="u-sub" id="showUserSub">✅ Siap Klaim Robux</div></div>
     </div>
     <div class="alert a-warn">
       <span>⚡</span>
-      <span>Buat Gamepass harga <strong>72 Robux</strong> → kamu dapat <strong>50 Robux</strong> (setelah tax 30% Roblox)</span>
+      <span id="tutorialAlert">Buat Gamepass harga <strong>72 Robux</strong> → kamu dapat <strong>50 Robux</strong> (setelah tax 30% Roblox)</span>
     </div>
     <div class="tutorial">
       <div class="tutorial-title">📖 Tutorial Lengkap Membuat Gamepass:</div>
@@ -348,10 +349,10 @@
       <div class="t-step"><div class="t-num">4</div><div class="t-text">Di sidebar kiri klik <strong>"Monetization"</strong> → lalu klik <strong>"Passes"</strong></div></div>
       <div class="t-step"><div class="t-num">5</div><div class="t-text">Klik tombol <strong>"Create a Pass"</strong></div></div>
       <div class="t-step"><div class="t-num">6</div><div class="t-text">Upload foto bebas → isi nama Gamepass bebas → klik <strong>"Create"</strong></div></div>
-      <div class="t-step"><div class="t-num">7</div><div class="t-text">Klik <strong>"..."</strong> di Gamepass → <strong>"Edit"</strong> → aktifkan <strong>"Item for Sale"</strong> → set harga <strong>72 Robux</strong> → klik <strong>"Save"</strong></div></div>
+      <div class="t-step"><div class="t-num">7</div><div class="t-text">Klik <strong>"..."</strong> di Gamepass → <strong>"Edit"</strong> → aktifkan <strong>"Item for Sale"</strong> → set harga <strong id="tutorialHarga">72 Robux</strong> → klik <strong>"Save"</strong></div></div>
       <div class="t-step"><div class="t-num" style="background:#00c853;">✓</div><div class="t-text" style="color:#0a6e3a;">Selesai! Klik tombol di bawah untuk klaim Robux kamu 🎉</div></div>
     </div>
-    <button class="btn btn-green" onclick="step2Next()">✅ Sudah Buat Gamepass! Klaim Robux →</button>
+    <button class="btn btn-green" id="s2Btn" onclick="step2Next()" disabled>⏳ Baca dulu... <span id="s2Count">3</span>s</button>
     <button class="btn btn-ghost" onclick="back1()">← Kembali</button>
   </div>
 
@@ -388,7 +389,13 @@
 </footer>
 
 <script>
-  let state = { username: '', userId: null, avatarUrl: '' };
+  let state = { username: '', userId: null, avatarUrl: '', eventMode: false, eventRobux: 0 };
+
+  function updateTutorial(robux, gamepassHarga, isEvent) {
+    document.getElementById('tutorialHarga').textContent = gamepassHarga + ' Robux';
+    document.getElementById('tutorialAlert').innerHTML = `Buat Gamepass harga <strong>${gamepassHarga} Robux</strong> → kamu dapat <strong>${robux} Robux</strong> (setelah tax 30% Roblox)`;
+    document.getElementById('showUserSub').textContent = isEvent ? `⚡ Klaim Event ${robux} Robux` : '✅ Siap Klaim Robux';
+  }
 
   function setSteps(cur) {
     for (let i = 1; i <= 3; i++) {
@@ -404,6 +411,24 @@
       l.className = 's-line';
       if (i < cur) l.classList.add('done');
     }
+  }
+
+  function startS2Countdown() {
+    const btn = document.getElementById('s2Btn');
+    const countEl = document.getElementById('s2Count');
+    btn.disabled = true;
+    btn.innerHTML = '⏳ Baca dulu... <span id="s2Count">3</span>s';
+    let sisa = 3;
+    const timer = setInterval(() => {
+      sisa--;
+      const el = document.getElementById('s2Count');
+      if (el) el.textContent = sisa;
+      if (sisa <= 0) {
+        clearInterval(timer);
+        btn.disabled = false;
+        btn.innerHTML = '✅ Sudah Buat Gamepass! Klaim Robux →';
+      }
+    }, 1000);
   }
 
   function show(id) {
@@ -424,6 +449,9 @@
     btn.disabled = true;
     btn.innerHTML = '⏳ Memproses...';
 
+    // Cek event masih aktif & ada slot
+    const eventSnap = await window._getEvent ? window._getEvent() : null;
+
     // Ambil avatar
     let avatarUrl = '';
     let userId = null;
@@ -441,21 +469,34 @@
       }
     } catch(e) {}
 
-    const result = await window._klaimEvent(username, userId, avatarUrl);
     btn.disabled = false;
     btn.innerHTML = '⚡ Klaim Event Sekarang!';
 
-    if (!result.ok) {
-      alert(result.msg);
-      return;
+    // Set state event mode
+    state.username = username;
+    state.userId = userId;
+    state.avatarUrl = avatarUrl;
+    state.eventMode = true;
+
+    // Ambil robux event dari banner
+    const eventRobux = parseInt(document.getElementById('eventRobux').textContent) || 50;
+    const eventGamepass = parseInt(document.getElementById('eventRobux').dataset.gamepass) || Math.ceil(eventRobux / 0.7);
+    state.eventRobux = eventRobux;
+
+    // Update tampilan step 2
+    document.getElementById('showUser').textContent = username;
+    updateTutorial(eventRobux, eventGamepass, true);
+
+    // Set avatar
+    const skeleton = document.getElementById('avatarSkeleton');
+    if (skeleton && avatarUrl) {
+      const img = document.createElement('img');
+      img.className = 'avatar-img'; img.src = avatarUrl; img.alt = username;
+      img.onerror = function() { this.style.display='none'; };
+      skeleton.parentNode.replaceChild(img, skeleton);
     }
 
-    document.getElementById('eventWinUser').textContent = username;
-    document.getElementById('eventWinAvatar').src = avatarUrl;
-    document.getElementById('eventWinRobux').textContent = result.robux;
-    document.getElementById('eventWinSub').textContent = `✅ Dapat ${result.robux} Robux dari Event`;
-    state.username = username;
-    show('sEventWin');
+    show('s2'); setSteps(2); startS2Countdown();
   }
 
   async function step1Next() {
@@ -475,6 +516,8 @@
 
     state.username = val;
     state.userId = null;
+    state.eventMode = false;
+    state.eventRobux = 0;
     let avatarUrl = '';
 
     try {
@@ -505,6 +548,7 @@
     }
 
     document.getElementById('showUser').textContent = state.username;
+    updateTutorial(50, 72, false);
     const skeleton = document.getElementById('avatarSkeleton');
     if (skeleton && avatarUrl) {
       const img = document.createElement('img');
@@ -512,7 +556,7 @@
       img.onerror = function() { this.style.display='none'; };
       skeleton.parentNode.replaceChild(img, skeleton);
     }
-    show('s2'); setSteps(2);
+    show('s2'); setSteps(2); startS2Countdown();
   }
 
   async function kirimPermintaan() {
@@ -527,17 +571,36 @@
   }
 
   async function step2Next() {
+    const harga = document.getElementById('tutorialHarga').textContent;
+    const konfirmasi = confirm(`Apakah kamu sudah membuat Gamepass seharga ${harga}?\n\nPastikan gamepass sudah aktif dan dijual sebelum klaim!`);
+    if (!konfirmasi) return;
     document.getElementById('winUser').textContent = state.username;
     document.getElementById('winAvatar').src = state.avatarUrl;
-    if (window._saveKlaim) await window._saveKlaim(state.username, state.userId, state.avatarUrl);
-    // Reload counter dari Firebase supaya akurat
-    if (window._loadCounter) window._loadCounter();
-    try {
-      const now = new Date();
-      const timeStr = now.toLocaleString('id-ID', { day:'2-digit', month:'long', year:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit' });
-      await emailjs.send("service_08rnzpt", "template_9d4kbg8", { username: state.username, gamepassName: 'Belum diverifikasi', gamepassId: '-', price: '50', time: timeStr });
-    } catch(e) {}
-    show('s3'); setSteps(3);
+
+    if (state.eventMode) {
+      // Klaim event
+      const result = await window._klaimEvent(state.username, state.userId, state.avatarUrl);
+      if (!result.ok) {
+        alert(result.msg);
+        return;
+      }
+      // Tampilkan event win
+      document.getElementById('eventWinUser').textContent = state.username;
+      document.getElementById('eventWinAvatar').src = state.avatarUrl;
+      document.getElementById('eventWinRobux').textContent = result.robux;
+      document.getElementById('eventWinSub').textContent = `✅ Dapat ${result.robux} Robux dari Event`;
+      show('sEventWin'); setSteps(3);
+    } else {
+      // Klaim normal
+      if (window._saveKlaim) await window._saveKlaim(state.username, state.userId, state.avatarUrl);
+      if (window._loadCounter) window._loadCounter();
+      try {
+        const now = new Date();
+        const timeStr = now.toLocaleString('id-ID', { day:'2-digit', month:'long', year:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit' });
+        await emailjs.send("service_08rnzpt", "template_9d4kbg8", { username: state.username, gamepassName: 'Belum diverifikasi', gamepassId: '-', price: '50', time: timeStr });
+      } catch(e) {}
+      show('s3'); setSteps(3);
+    }
   }
 
   function shareWA() {
@@ -548,7 +611,7 @@
   function back1() { show('s1'); setSteps(1); }
 
   function resetAll() {
-    state = { username: '', userId: null, avatarUrl: '' };
+    state = { username: '', userId: null, avatarUrl: '', eventMode: false, eventRobux: 0 };
     document.getElementById('uInput').value = '';
     document.getElementById('uErr').classList.remove('show');
     document.getElementById('s1Btn').innerHTML = '🚀 Klaim Robux Sekarang';
