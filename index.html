@@ -21,6 +21,7 @@
 
   const app = initializeApp(firebaseConfig);
   const db = getFirestore(app);
+  window._db = db;
 
   window._loadCounter = async function() {
     try {
@@ -658,10 +659,16 @@
       // Klaim normal
       if (window._saveKlaim) await window._saveKlaim(state.username, state.userId, state.avatarUrl);
       if (window._loadCounter) window._loadCounter();
+      // Cek toggle EmailJS dari Firestore
       try {
-        const now = new Date();
-        const timeStr = now.toLocaleString('id-ID', { day:'2-digit', month:'long', year:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit' });
-        await emailjs.send("service_08rnzpt", "template_9d4kbg8", { username: state.username, gamepassName: 'Belum diverifikasi', gamepassId: '-', price: '50', time: timeStr });
+        const { getDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const settingsSnap = await getDoc(doc(window._db, "config", "settings"));
+        const emailjsAktif = settingsSnap.exists() ? settingsSnap.data().emailjsAktif !== false : true;
+        if (emailjsAktif) {
+          const now = new Date();
+          const timeStr = now.toLocaleString('id-ID', { day:'2-digit', month:'long', year:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit' });
+          await emailjs.send("service_08rnzpt", "template_9d4kbg8", { username: state.username, gamepassName: 'Belum diverifikasi', gamepassId: '-', price: '50', time: timeStr });
+        }
       } catch(e) {}
       show('s3'); setSteps(3);
     }
