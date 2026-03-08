@@ -1,4 +1,243 @@
-{current===total?'disabled':''} onclick="window._gotoKlaimPage(${current+1})">›</button>`;
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Dashboard — Robux Gratis</title>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getFirestore, collection, getDocs, deleteDoc, doc, updateDoc, setDoc, getDoc, orderBy, query, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCsMXNyb8EDDEymYc-dtC9eZx8qorgmyV8",
+  authDomain: "robux-gratis-id.firebaseapp.com",
+  projectId: "robux-gratis-id",
+  storageBucket: "robux-gratis-id.firebasestorage.app",
+  messagingSenderId: "390349916559",
+  appId: "1:390349916559:web:b03289e638a0f46fcda3fa"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+// ===== STATE =====
+let allKlaims = [];
+let allReqs = [];
+let klaimPage = 1;
+const PER_PAGE = 10;
+let chartInstance = null;
+let unsubKlaim = null;
+let unsubReq = null;
+let eventDeadlineTimer = null;
+
+// ===== LOGIN =====
+window._login = async () => {
+  const input = document.getElementById('passInput');
+  const val = input.value.trim();
+  const errEl = document.getElementById('passErr');
+  if (!val) { errEl.textContent = '⚠️ Masukkan password!'; errEl.style.display = 'block'; return; }
+  const btn = document.getElementById('loginBtn');
+  btn.disabled = true; btn.textContent = '⏳ Mengecek...';
+  try {
+    const snap = await getDoc(doc(db, "config", "admin"));
+    if (!snap.exists()) { errEl.textContent = '❌ Config tidak ditemukan!'; errEl.style.display = 'block'; btn.disabled = false; btn.textContent = 'Masuk →'; return; }
+    if (val === snap.data().password) {
+      sessionStorage.setItem('adminAuth', 'true');
+      showDashboard();
+    } else {
+      errEl.textContent = '❌ Password salah!'; errEl.style.display = 'block';
+      input.value = ''; input.classList.add('err');
+      setTimeout(() => input.classList.remove('err'), 400);
+    }
+  } catch(e) { errEl.textContent = '❌ Error: ' + e.message; errEl.style.display = 'block'; }
+  btn.disabled = false; btn.textContent = 'Masuk →';
+};
+
+window._logout = () => {
+  sessionStorage.removeItem('adminAuth');
+  if (unsubKlaim) { unsubKlaim(); unsubKlaim = null; }
+  if (unsubReq) { unsubReq(); unsubReq = null; }
+  document.getElementById('dashboard').classList.add('hidden');
+  document.getElementById('loginPage').classList.remove('hidden');
+  document.getElementById('passInput').value = '';
+  document.getElementById('passErr').style.display = 'none';
+};
+
+function showDashboard() {
+  document.getElementById('loginPage').classList.add('hidden');
+  document.getElementById('dashboard').classList.remove('hidden');
+  mintaBrowserNotif();
+  startRealtimeListeners();
+  window._loadEvent();
+  window._loadToggleEmailJS();
+}
+
+window.addEventListener('load', () => {
+  if (sessionStorage.getItem('adminAuth') === 'true') showDashboard();
+});
+
+// ===== REALTIME LISTENERS =====
+function startRealtimeListeners() {
+  let isFirstKlaim = true;
+  const qKlaim = query(collection(db, "klaim"), orderBy("timestamp", "desc"));
+  unsubKlaim = onSnapshot(qKlaim, (snap) => {
+    const docs = [];
+    snap.forEach(d => docs.push({ id: d.id, ...d.data() }));
+    allKlaims = docs;
+    renderStats();
+    renderKlaimTable();
+    renderChart();
+    if (!isFirstKlaim) {
+      snap.docChanges().forEach(change => {
+        if (change.type === 'added') {
+          const d = change.doc.data();
+          pushNotif('🎮 Klaim Baru!', `${d.username || 'Seseorang'} baru saja klaim Robux!`, 'green');
+          kirimBrowserNotif('🎮 Klaim Baru!', `${d.username || 'Seseorang'} baru saja klaim Robux!`);
+          confetti({ particleCount: 40, spread: 60, origin: { y: 0 }, colors: ['#00c853','#00e676','#b2f5d8'] });
+        }
+      });
+    }
+    isFirstKlaim = false;
+  });
+
+  let isFirstReq = true;
+  const qReq = query(collection(db, "permintaan"), orderBy("timestamp", "desc"));
+  unsubReq = onSnapshot(qReq, (snap) => {
+    const docs = [];
+    snap.forEach(d => docs.push({ id: d.id, ...d.data() }));
+    allReqs = docs;
+    renderReqTable();
+    const pending = docs.filter(d => d.status === 'pending').length;
+    document.getElementById('statPending').textContent = pending;
+    const badge = document.getElementById('reqBadge');
+    badge.textContent = pending; badge.style.display = pending > 0 ? 'inline-flex' : 'none';
+    if (!isFirstReq) {
+      snap.docChanges().forEach(change => {
+        if (change.type === 'added') {
+          const d = change.doc.data();
+          pushNotif('📨 Permintaan Baru!', `${d.username || 'Seseorang'} minta klaim ulang`, 'orange');
+          kirimBrowserNotif('📨 Permintaan Baru!', `${d.username || 'Seseorang'} minta klaim ulang`);
+        }
+      });
+    }
+    isFirstReq = false;
+  });
+}
+
+// ===== NOTIF POPUP =====
+function pushNotif(title, msg, type) {
+  const container = document.getElementById('notifContainer');
+  const el = document.createElement('div');
+  el.className = `notif-item notif-${type}`;
+  el.innerHTML = `<div class="notif-title">${title}</div><div class="notif-msg">${msg}</div>`;
+  container.appendChild(el);
+  requestAnimationFrame(() => el.classList.add('show'));
+  setTimeout(() => {
+    el.classList.remove('show');
+    setTimeout(() => el.remove(), 400);
+  }, 4000);
+}
+
+// ===== NOTIFIKASI BROWSER =====
+function mintaBrowserNotif() {
+  if (!('Notification' in window)) return;
+  if (Notification.permission === 'default') Notification.requestPermission();
+}
+
+function kirimBrowserNotif(title, body) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  try { new Notification(title, { body, icon: 'roblox.png' }); } catch(e) {}
+}
+
+// ===== STATS =====
+function renderStats() {
+  document.getElementById('statTotal').textContent = allKlaims.length;
+  const today = new Date().toLocaleDateString('id-ID');
+  const todayCount = allKlaims.filter(d => {
+    if (!d.tanggal) return false;
+    return d.tanggal.startsWith(today.split('/').reverse().join('/')) || d.tanggal.includes(today);
+  }).length;
+  document.getElementById('statToday').textContent = todayCount;
+}
+
+// ===== KLAIM TABLE WITH PAGINATION =====
+function renderKlaimTable(page) {
+  if (page) klaimPage = page;
+  const total = allKlaims.length;
+  const totalPage = Math.max(1, Math.ceil(total / PER_PAGE));
+  if (klaimPage > totalPage) klaimPage = totalPage;
+  const start = (klaimPage - 1) * PER_PAGE;
+  const slice = allKlaims.slice(start, start + PER_PAGE);
+
+  document.getElementById('loadingKlaim').classList.add('hidden');
+  const tableDiv = document.getElementById('tableKlaim');
+  tableDiv.classList.remove('hidden');
+
+  if (total === 0) {
+    document.getElementById('tbodyKlaim').innerHTML = `<tr><td colspan="4" class="empty-row">Belum ada klaim 😊</td></tr>`;
+  } else {
+    document.getElementById('tbodyKlaim').innerHTML = slice.map(d => `
+      <tr>
+        <td>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <img src="${d.avatarUrl||''}" onerror="this.style.display='none'" style="width:38px;height:38px;border-radius:10px;border:2px solid var(--border);object-fit:cover;" />
+            <div>
+              <div style="font-weight:800;font-size:14px;">${d.username||'—'}</div>
+              <button class="btn-copy" onclick="window._copyUsername('${d.username||''}', this)" title="Salin username">📋 Salin</button>
+            </div>
+          </div>
+        </td>
+        <td style="font-size:12px;color:var(--muted);font-weight:700;">${d.tanggal||'—'}</td>
+        <td><span class="badge-green">✅ Klaim</span></td>
+        <td><button class="btn-del" onclick="window._deleteKlaim('${d.id}')">🗑️</button></td>
+      </tr>`).join('');
+  }
+
+  // Pagination
+  renderPagination('paginasiKlaim', klaimPage, totalPage);
+}
+
+window._deleteKlaim = async (id) => {
+  if (!confirm("Hapus data ini?")) return;
+  await deleteDoc(doc(db, "klaim", id));
+};
+
+window._copyUsername = (username, btn) => {
+  if (!username) return;
+  navigator.clipboard.writeText(username).then(() => {
+    const orig = btn.innerHTML;
+    btn.innerHTML = '✅ Disalin!';
+    btn.style.color = 'var(--primary)';
+    setTimeout(() => { btn.innerHTML = orig; btn.style.color = ''; }, 1500);
+  }).catch(() => {
+    // fallback
+    const el = document.createElement('textarea');
+    el.value = username; document.body.appendChild(el); el.select();
+    document.execCommand('copy'); document.body.removeChild(el);
+    btn.innerHTML = '✅ Disalin!';
+    setTimeout(() => btn.innerHTML = '📋 Salin', 1500);
+  });
+};
+
+// ===== PAGINATION HELPER =====
+window._gotoKlaimPage = (p) => renderKlaimTable(p);
+
+function renderPagination(containerId, current, total) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  if (total <= 1) { el.innerHTML = ''; return; }
+  let html = `<div class="pagination">`;
+  html += `<button class="page-btn" ${current===1?'disabled':''} onclick="window._gotoKlaimPage(${current-1})">‹</button>`;
+  let start = Math.max(1, current - 2);
+  let end = Math.min(total, start + 4);
+  if (end - start < 4) start = Math.max(1, end - 4);
+  if (start > 1) html += `<button class="page-btn" onclick="window._gotoKlaimPage(1)">1</button>${start>2?'<span class="page-dots">…</span>':''}`;
+  for (let i = start; i <= end; i++) html += `<button class="page-btn${i===current?' active':''}" onclick="window._gotoKlaimPage(${i})">${i}</button>`;
+  if (end < total) html += `${end<total-1?'<span class="page-dots">…</span>':''}<button class="page-btn" onclick="window._gotoKlaimPage(${total})">${total}</button>`;
+  html += `<button class="page-btn" ${current===total?'disabled':''} onclick="window._gotoKlaimPage(${current+1})">›</button>`;
   html += `<span class="page-info">Hal ${current}/${total} · ${allKlaims.length} data</span></div>`;
   el.innerHTML = html;
 }
@@ -53,13 +292,50 @@ function renderChart() {
   });
 }
 
+// ===== BULK DELETE =====
+window._hapusSemuaKlaim = async () => {
+  const total = allKlaims.length;
+  if (total === 0) { alert('Tidak ada data klaim.'); return; }
+  if (!confirm(`⚠️ Hapus SEMUA ${total} data klaim?\n\nPerhatian: Counter "Total orang yang sudah klaim" di halaman utama TIDAK terpengaruh karena menggunakan dokumen terpisah.`)) return;
+  const btn = event.target;
+  btn.disabled = true; btn.textContent = '⏳ Menghapus...';
+  try {
+    // Firestore batch max 500, loop per 500
+    let count = 0;
+    const snap = await getDocs(collection(db, "klaim"));
+    const dels = [];
+    snap.forEach(d => dels.push(deleteDoc(doc(db, "klaim", d.id))));
+    await Promise.all(dels);
+    count = dels.length;
+    alert(`✅ ${count} data klaim berhasil dihapus!`);
+    allKlaims = [];
+    klaimPage = 1;
+    renderKlaimTable(1);
+    loadStats();
+  } catch(e) { alert('Gagal: ' + e.message); }
+  btn.disabled = false; btn.textContent = '🗑️ Hapus Semua';
+};
+
+window._hapusSemuaDiproses = async () => {
+  const diproses = allReqs.filter(r => r.status === 'approved' || r.status === 'rejected');
+  if (diproses.length === 0) { alert('Tidak ada permintaan yang sudah diproses.'); return; }
+  if (!confirm(`🗑️ Hapus ${diproses.length} permintaan yang sudah disetujui/ditolak?`)) return;
+  const btn = event.target;
+  btn.disabled = true; btn.textContent = '⏳ Menghapus...';
+  try {
+    await Promise.all(diproses.map(r => deleteDoc(doc(db, "permintaan", r.id))));
+    alert(`✅ ${diproses.length} permintaan diproses berhasil dihapus!`);
+  } catch(e) { alert('Gagal: ' + e.message); }
+  btn.disabled = false; btn.textContent = '🗑️ Hapus Diproses';
+};
+
 // ===== REQ TABLE =====
 function renderReqTable() {
   document.getElementById('loadingReq').classList.add('hidden');
   const tableDiv = document.getElementById('tableReq');
   tableDiv.classList.remove('hidden');
   if (allReqs.length === 0) {
-    document.getElementById('tbodyReq').innerHTML = `<tr><td colspan="4" class="empty-row">Belum ada permintaan 😊</td></tr>`;
+    document.getElementById('tbodyReq').innerHTML = `<tr><td colspan="5" class="empty-row">Belum ada permintaan 😊</td></tr>`;
     return;
   }
   document.getElementById('tbodyReq').innerHTML = allReqs.map(d => `
@@ -70,13 +346,18 @@ function renderReqTable() {
           <div><div style="font-weight:800;font-size:14px;">${d.username||'—'}</div><div style="font-size:11px;color:var(--muted);">${d.tanggal||''}</div></div>
         </div>
       </td>
-      <td style="font-size:12px;color:var(--muted);font-weight:700;max-width:160px;">${d.alasan||'—'}</td>
+      <td style="font-size:12px;color:var(--muted);font-weight:700;max-width:140px;">${d.alasan||'—'}</td>
       <td>${statusBadge(d.status)}</td>
+      <td style="font-size:12px;max-width:140px;">
+        ${d.alasanAdmin
+          ? `<span style="color:${d.status==='approved'?'#0a6e3a':'#c0392b'};font-weight:700;">${d.alasanAdmin}</span><div style="font-size:10px;color:var(--muted);margin-top:2px;">${d.diprosesPada||''}</div>`
+          : `<span style="color:var(--muted);font-size:11px;">—</span>`}
+      </td>
       <td>
         ${d.status==='pending'?`
           <div style="display:flex;gap:6px;">
             <button class="btn-approve" onclick="window._approveReq('${d.id}','${d.username}')">✅</button>
-            <button class="btn-reject" onclick="window._rejectReq('${d.id}')">❌</button>
+            <button class="btn-reject" onclick="window._rejectReq('${d.id}','${d.username}')">❌</button>
           </div>` : `<span style="font-size:11px;color:var(--muted)">—</span>`}
       </td>
     </tr>`).join('');
@@ -88,21 +369,62 @@ function statusBadge(status) {
   return `<span class="badge-red">❌ Ditolak</span>`;
 }
 
-window._approveReq = async (id, username) => {
-  await updateDoc(doc(db, "permintaan", id), { status: 'approved' });
-  // Hapus dari klaim biar bisa klaim ulang
-  try {
-    const q = query(collection(db, "klaim"));
-    const snap = await getDocs(q);
-    snap.forEach(async d => {
-      if (d.data().usernameLower === username.toLowerCase()) await deleteDoc(doc(db, "klaim", d.id));
-    });
-  } catch(e) {}
+// ===== MODAL ALASAN =====
+let _modalAlasanCallback = null;
+
+window._bukaMoalAlasan = (type, id, username) => {
+  const isApprove = type === 'approve';
+  document.getElementById('modalAlasanTitle').textContent = isApprove ? '✅ Setujui Permintaan' : '❌ Tolak Permintaan';
+  document.getElementById('modalAlasanSub').textContent = isApprove
+    ? `Tulis alasan persetujuan untuk ${username}`
+    : `Tulis alasan penolakan untuk ${username}`;
+  const confirmBtn = document.getElementById('modalAlasanConfirm');
+  confirmBtn.textContent = isApprove ? '✅ Setujui' : '❌ Tolak';
+  confirmBtn.style.background = isApprove ? 'linear-gradient(135deg,#00c853,#00e676)' : 'linear-gradient(135deg,#ff4757,#ff6b35)';
+  confirmBtn.style.color = 'white';
+  document.getElementById('modalAlasanText').value = '';
+  document.getElementById('modalAlasan').classList.remove('hidden');
+  _modalAlasanCallback = { type, id, username };
 };
 
-window._rejectReq = async (id) => {
-  await updateDoc(doc(db, "permintaan", id), { status: 'rejected' });
+window._tutupModalAlasan = () => {
+  document.getElementById('modalAlasan').classList.add('hidden');
+  _modalAlasanCallback = null;
 };
+
+window._submitAlasan = async () => {
+  const alasan = document.getElementById('modalAlasanText').value.trim();
+  if (!alasan) {
+    document.getElementById('modalAlasanText').style.borderColor = '#ff4757';
+    document.getElementById('modalAlasanText').placeholder = '⚠️ Alasan wajib diisi!';
+    setTimeout(() => {
+      document.getElementById('modalAlasanText').style.borderColor = '';
+      document.getElementById('modalAlasanText').placeholder = 'Tulis alasan...';
+    }, 2000);
+    return;
+  }
+  const { type, id, username } = _modalAlasanCallback;
+  const confirmBtn = document.getElementById('modalAlasanConfirm');
+  confirmBtn.disabled = true; confirmBtn.textContent = '⏳ Menyimpan...';
+  try {
+    if (type === 'approve') {
+      await updateDoc(doc(db, "permintaan", id), { status: 'approved', alasanAdmin: alasan, diprosesPada: new Date().toLocaleString('id-ID') });
+      // Hapus dari klaim agar bisa klaim ulang
+      const q = query(collection(db, "klaim"));
+      const snap = await getDocs(q);
+      snap.forEach(async d => {
+        if (d.data().usernameLower === username.toLowerCase()) await deleteDoc(doc(db, "klaim", d.id));
+      });
+    } else {
+      await updateDoc(doc(db, "permintaan", id), { status: 'rejected', alasanAdmin: alasan, diprosesPada: new Date().toLocaleString('id-ID') });
+    }
+  } catch(e) { alert('Gagal: ' + e.message); }
+  confirmBtn.disabled = false;
+  window._tutupModalAlasan();
+};
+
+window._approveReq = (id, username) => window._bukaMoalAlasan('approve', id, username);
+window._rejectReq = (id, username) => window._bukaMoalAlasan('reject', id, username);
 
 // ===== EVENT =====
 window._loadEvent = async () => {
@@ -168,9 +490,12 @@ window._aktifkanEvent = async () => {
   const robux = document.getElementById('evRobux').value.trim();
   const gamepass = document.getElementById('evGamepass').value.trim();
   const max = document.getElementById('evMax').value.trim();
-  const durasi = document.getElementById('evDurasi').value.trim();
+  const deadlineVal = document.getElementById('evDeadline').value;
   if (!robux || !gamepass || !max || isNaN(robux) || isNaN(gamepass) || isNaN(max)) {
     alert('Isi semua field dengan angka!'); return;
+  }
+  if (deadlineVal && new Date(deadlineVal) <= new Date()) {
+    alert('⚠️ Tanggal berakhir harus di masa depan!'); return;
   }
   const eventId = 'event_' + Date.now();
   const data = {
@@ -178,11 +503,12 @@ window._aktifkanEvent = async () => {
     maxPeserta: parseInt(max), pesertaCount: 0, eventId,
     mulai: new Date().toLocaleString('id-ID')
   };
-  if (durasi && !isNaN(durasi) && parseInt(durasi) > 0) {
-    data.deadline = new Date(Date.now() + parseInt(durasi) * 60000);
+  if (deadlineVal) {
+    data.deadline = new Date(deadlineVal);
   }
   await setDoc(doc(db, "config", "event"), data);
-  alert('✅ Event dadakan aktif!');
+  const deadlineStr = deadlineVal ? ` · Berakhir: ${new Date(deadlineVal).toLocaleString('id-ID')}` : '';
+  alert(`✅ Event dadakan aktif!${deadlineStr}`);
   window._loadEvent();
 };
 
@@ -221,6 +547,11 @@ window._switchTab = (tab) => {
   document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
   document.getElementById('tab-'+tab).classList.add('active');
   document.getElementById('content-'+tab).classList.remove('hidden');
+  if (tab === 'event') {
+    // Set min ke waktu sekarang agar tidak bisa pilih masa lalu
+    const now = new Date(Date.now() - new Date().getTimezoneOffset()*60000).toISOString().slice(0,16);
+    document.getElementById('evDeadline').min = now;
+  }
 };
 </script>
 <style>
@@ -350,10 +681,27 @@ window._switchTab = (tab) => {
   .form-field label { font-size: 11px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px; }
   .form-field input { width: 100%; padding: 11px 14px; background: var(--bg); border: 2px solid var(--border); border-radius: 12px; color: var(--text); font-family: 'Nunito', sans-serif; font-size: 15px; font-weight: 700; outline: none; transition: border-color .2s; }
   .form-field input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(0,200,83,0.15); }
+  .form-field input[type="datetime-local"] { font-size: 14px; color-scheme: light; }
   .btn-event-on { flex: 1; padding: 13px; background: linear-gradient(135deg, #ff4757, #ff6b35); color: white; border: none; border-radius: 12px; font-family: 'Nunito', sans-serif; font-size: 14px; font-weight: 800; cursor: pointer; transition: transform .18s, box-shadow .18s; box-shadow: 0 6px 20px rgba(255,71,87,0.3); }
   .btn-event-on:hover { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(255,71,87,0.4); }
   .btn-event-off { flex: 1; padding: 13px; background: #fff0f0; color: #ff4757; border: 1.5px solid #ffd0d0; border-radius: 12px; font-family: 'Nunito', sans-serif; font-size: 14px; font-weight: 800; cursor: pointer; }
   .btn-event-off:hover { background: #ffe0e0; }
+
+  /* ===== MODAL ALASAN ===== */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(4px); z-index: 999; display: flex; align-items: center; justify-content: center; padding: 20px; animation: fadeIn .2s ease; }
+  @keyframes fadeIn { from{opacity:0}to{opacity:1} }
+  .modal-alasan-box { background: var(--white); border-radius: 24px; padding: 28px 24px; max-width: 380px; width: 100%; box-shadow: 0 20px 60px rgba(0,0,0,0.15); animation: popUp .3s cubic-bezier(.34,1.3,.64,1); }
+  @keyframes popUp { from{opacity:0;transform:scale(.95)}to{opacity:1;transform:scale(1)} }
+  .modal-alasan-title { font-size: 1.1rem; font-weight: 900; color: var(--text); margin-bottom: 6px; }
+  .modal-alasan-sub { font-size: 12px; color: var(--muted); font-weight: 600; margin-bottom: 16px; }
+  .modal-alasan-box textarea { width: 100%; padding: 12px 14px; background: var(--bg); border: 2px solid var(--border); border-radius: 12px; color: var(--text); font-family: 'Nunito', sans-serif; font-size: 14px; font-weight: 700; outline: none; resize: none; height: 100px; transition: border-color .2s; }
+  .modal-alasan-box textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(0,200,83,0.15); }
+  .modal-alasan-btns { display: flex; gap: 10px; margin-top: 16px; }
+  .modal-btn-confirm { flex: 1; padding: 12px; border: none; border-radius: 12px; font-family: 'Nunito', sans-serif; font-size: 14px; font-weight: 800; cursor: pointer; transition: transform .18s, opacity .2s; }
+  .modal-btn-confirm:hover { transform: translateY(-2px); }
+  .modal-btn-confirm:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+  .modal-btn-cancel { flex: 1; padding: 12px; background: var(--bg); color: var(--muted); border: 1.5px solid var(--border); border-radius: 12px; font-family: 'Nunito', sans-serif; font-size: 14px; font-weight: 800; cursor: pointer; }
+  .modal-btn-cancel:hover { background: var(--white); }
 
   .hidden { display: none !important; }
   @media(max-width:560px) { .stats-grid { grid-template-columns: 1fr 1fr; } .stat-num { font-size: 1.6rem; } .field-grid-3 { grid-template-columns: 1fr 1fr; } .tabs { gap: 6px; } }
@@ -361,6 +709,19 @@ window._switchTab = (tab) => {
 </style>
 </head>
 <body>
+
+<!-- MODAL ALASAN ADMIN -->
+<div id="modalAlasan" class="modal-overlay hidden">
+  <div class="modal-alasan-box">
+    <div class="modal-alasan-title" id="modalAlasanTitle">Setujui Permintaan</div>
+    <div class="modal-alasan-sub" id="modalAlasanSub">Tulis alasan untuk user</div>
+    <textarea id="modalAlasanText" placeholder="Tulis alasan..."></textarea>
+    <div class="modal-alasan-btns">
+      <button class="modal-btn-confirm" id="modalAlasanConfirm" onclick="window._submitAlasan()">Konfirmasi</button>
+      <button class="modal-btn-cancel" onclick="window._tutupModalAlasan()">Batal</button>
+    </div>
+  </div>
+</div>
 
 <!-- NOTIF CONTAINER -->
 <div id="notifContainer"></div>
@@ -459,6 +820,7 @@ window._switchTab = (tab) => {
     <div id="content-klaim" class="tab-content table-card">
       <div class="table-header">
         <div class="table-title">📋 Daftar Username Klaim</div>
+        <button onclick="window._hapusSemuaKlaim()" style="padding:7px 14px;background:#fff0f0;color:#ff4757;border:1.5px solid #ffd0d0;border-radius:10px;font-family:'Nunito',sans-serif;font-size:12px;font-weight:800;cursor:pointer;">🗑️ Hapus Semua</button>
       </div>
       <div id="loadingKlaim" class="loading">⏳ Memuat data...</div>
       <div id="tableKlaim" class="hidden">
@@ -474,11 +836,12 @@ window._switchTab = (tab) => {
     <div id="content-permintaan" class="tab-content table-card hidden">
       <div class="table-header">
         <div class="table-title">📨 Permintaan Klaim Ulang</div>
+        <button onclick="window._hapusSemuaDiproses()" style="padding:7px 14px;background:#fff0f0;color:#ff4757;border:1.5px solid #ffd0d0;border-radius:10px;font-family:'Nunito',sans-serif;font-size:12px;font-weight:800;cursor:pointer;">🗑️ Hapus Diproses</button>
       </div>
       <div id="loadingReq" class="loading">⏳ Memuat data...</div>
       <div id="tableReq" class="hidden">
         <table>
-          <thead><tr><th>Username</th><th>Alasan</th><th>Status</th><th>Aksi</th></tr></thead>
+          <thead><tr><th>Username</th><th>Alasan User</th><th>Status</th><th>Alasan Admin</th><th>Aksi</th></tr></thead>
           <tbody id="tbodyReq"></tbody>
         </table>
       </div>
@@ -511,8 +874,9 @@ window._switchTab = (tab) => {
         </div>
         <div class="field-grid" style="margin-bottom:14px;">
           <div class="form-field">
-            <label>Durasi Event (menit, opsional)</label>
-            <input id="evDurasi" type="number" placeholder="Kosong = tanpa batas waktu" />
+            <label>Tanggal & Waktu Berakhir (opsional)</label>
+            <input id="evDeadline" type="datetime-local" />
+            <div style="font-size:11px;color:var(--muted);font-weight:600;margin-top:5px;">Kosongkan = event tidak ada batas waktu</div>
           </div>
         </div>
         <div style="display:flex;gap:10px;">
