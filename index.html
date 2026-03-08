@@ -217,6 +217,19 @@
   /* EVENT SUCCESS */
   .event-win { background: linear-gradient(135deg, #ff4757, #ff6b35); border-radius: 18px; padding: 22px; margin: 14px 0; text-align: center; color: white; }
   .event-win-rbx { font-size: 3rem; font-weight: 900; letter-spacing: -2px; }
+  /* MODAL KONFIRMASI */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); z-index: 999; display: flex; align-items: center; justify-content: center; padding: 20px; animation: fadeIn .2s ease; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  .modal-box { background: white; border-radius: 24px; padding: 28px 24px; max-width: 360px; width: 100%; box-shadow: 0 20px 60px rgba(0,0,0,0.2); animation: popUp .3s cubic-bezier(.34,1.56,.64,1); }
+  .modal-icon { font-size: 48px; text-align: center; margin-bottom: 12px; }
+  .modal-title { font-size: 1.2rem; font-weight: 900; color: var(--text); text-align: center; margin-bottom: 8px; }
+  .modal-msg { font-size: 13px; color: var(--muted); text-align: center; font-weight: 600; line-height: 1.6; margin-bottom: 22px; }
+  .modal-btns { display: flex; gap: 10px; }
+  .modal-btn-yes { flex: 1; padding: 13px; background: linear-gradient(135deg, #00c853, #00e676); color: white; border: none; border-radius: 14px; font-family: 'Nunito', sans-serif; font-size: 15px; font-weight: 800; cursor: pointer; transition: transform .18s, opacity .2s; }
+  .modal-btn-yes:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+  .modal-btn-yes:not(:disabled):hover { transform: translateY(-2px); }
+  .modal-btn-no { flex: 1; padding: 13px; background: var(--bg); color: var(--muted); border: 2px solid var(--border); border-radius: 14px; font-family: 'Nunito', sans-serif; font-size: 15px; font-weight: 800; cursor: pointer; transition: transform .18s; }
+  .modal-btn-no:hover { transform: translateY(-2px); background: white; }
   .hidden { display: none !important; }
   footer { text-align: center; padding: 28px 0 10px; font-size: 12px; color: var(--muted); font-weight: 600; }
   footer a { color: var(--primary); text-decoration: none; font-weight: 800; }
@@ -380,6 +393,19 @@
       Share ke WhatsApp
     </button>
     <button class="btn btn-ghost" onclick="resetAll()">🔄 Mulai Ulang</button>
+  </div>
+</div>
+
+<!-- MODAL KONFIRMASI -->
+<div id="modalKonfirmasi" class="modal-overlay hidden">
+  <div class="modal-box">
+    <div class="modal-icon">🎮</div>
+    <div class="modal-title">Sudah Buat Gamepass?</div>
+    <div class="modal-msg" id="modalMsg">Pastikan gamepass kamu sudah aktif dan dijual sebelum klaim!</div>
+    <div class="modal-btns">
+      <button class="modal-btn-no" onclick="tutupModal()">Belum</button>
+      <button class="modal-btn-yes" id="modalBtnYes" onclick="konfirmasiYes()" disabled>(<span id="modalCount">3</span>) Sudah</button>
+    </div>
   </div>
 </div>
 
@@ -570,10 +596,48 @@
     else alert('Gagal mengirim. Coba lagi!');
   }
 
-  async function step2Next() {
+  let _step2Resolve = null;
+
+  function bukaModal() {
     const harga = document.getElementById('tutorialHarga').textContent;
-    const konfirmasi = confirm(`Apakah kamu sudah membuat Gamepass seharga ${harga}?\n\nPastikan gamepass sudah aktif dan dijual sebelum klaim!`);
-    if (!konfirmasi) return;
+    document.getElementById('modalMsg').textContent = `Pastikan Gamepass seharga ${harga} sudah aktif dan dijual sebelum klaim!`;
+    const btnYes = document.getElementById('modalBtnYes');
+    const countEl = document.getElementById('modalCount');
+    btnYes.disabled = true;
+    countEl.textContent = '3';
+    document.getElementById('modalKonfirmasi').classList.remove('hidden');
+    let sisa = 3;
+    const timer = setInterval(() => {
+      sisa--;
+      countEl.textContent = sisa;
+      if (sisa <= 0) {
+        clearInterval(timer);
+        btnYes.disabled = false;
+        btnYes.innerHTML = '✅ Sudah';
+      }
+    }, 1000);
+    return new Promise(resolve => { _step2Resolve = resolve; });
+  }
+
+  function tutupModal() {
+    document.getElementById('modalKonfirmasi').classList.add('hidden');
+    const btnYes = document.getElementById('modalBtnYes');
+    btnYes.disabled = true;
+    btnYes.innerHTML = '(<span id="modalCount">3</span>) Sudah';
+    if (_step2Resolve) { _step2Resolve(false); _step2Resolve = null; }
+  }
+
+  function konfirmasiYes() {
+    document.getElementById('modalKonfirmasi').classList.add('hidden');
+    const btnYes = document.getElementById('modalBtnYes');
+    btnYes.disabled = true;
+    btnYes.innerHTML = '(<span id="modalCount">3</span>) Sudah';
+    if (_step2Resolve) { _step2Resolve(true); _step2Resolve = null; }
+  }
+
+  async function step2Next() {
+    const ok = await bukaModal();
+    if (!ok) return;
     document.getElementById('winUser').textContent = state.username;
     document.getElementById('winAvatar').src = state.avatarUrl;
 
