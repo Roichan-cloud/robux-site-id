@@ -190,8 +190,9 @@
       if (snap.exists() && snap.data().active) {
         const d = snap.data();
         document.getElementById('evRobux').value = d.robux || '';
+        document.getElementById('evGamepass').value = d.gamepassHarga || '';
         document.getElementById('evMax').value = d.maxPeserta || '';
-        document.getElementById('evStatus').innerHTML = `<span style="background:#e8fff2;color:#0a6e3a;padding:5px 14px;border-radius:20px;font-size:13px;font-weight:800;">🟢 Event Aktif — ${d.robux} Robux — ${d.pesertaCount||0}/${d.maxPeserta} peserta</span>`;
+        document.getElementById('evStatus').innerHTML = `<span style="background:#e8fff2;color:#0a6e3a;padding:5px 14px;border-radius:20px;font-size:13px;font-weight:800;">🟢 Event Aktif — ${d.robux} Robux — Gamepass ${d.gamepassHarga} Robux — ${d.pesertaCount||0}/${d.maxPeserta} peserta</span>`;
         document.getElementById('btnAktifkan').classList.add('hidden');
         document.getElementById('btnMatikan').classList.remove('hidden');
       } else {
@@ -226,12 +227,19 @@
 
   window._aktifkanEvent = async () => {
     const robux = document.getElementById('evRobux').value.trim();
+    const gamepass = document.getElementById('evGamepass').value.trim();
     const max = document.getElementById('evMax').value.trim();
-    if (!robux || !max || isNaN(robux) || isNaN(max)) { alert('Isi jumlah Robux dan max peserta dengan angka!'); return; }
+    if (!robux || !gamepass || !max || isNaN(robux) || isNaN(gamepass) || isNaN(max)) {
+      alert('Isi semua field dengan angka!'); return;
+    }
     const eventId = 'event_' + Date.now();
     await setDoc(doc(db, "config", "event"), {
-      active: true, robux: parseInt(robux), maxPeserta: parseInt(max),
-      pesertaCount: 0, eventId, mulai: new Date().toLocaleString('id-ID')
+      active: true,
+      robux: parseInt(robux),
+      gamepassHarga: parseInt(gamepass),
+      maxPeserta: parseInt(max),
+      pesertaCount: 0, eventId,
+      mulai: new Date().toLocaleString('id-ID')
     });
     alert('✅ Event dadakan aktif!');
     window._loadEvent();
@@ -373,10 +381,14 @@
       <div style="background:var(--card);border:1.5px solid var(--border);border-radius:18px;padding:24px;margin-bottom:16px;">
         <div style="font-size:1rem;font-weight:900;margin-bottom:16px;">⚡ Kontrol Event Dadakan</div>
         <div id="evStatus" style="margin-bottom:18px;"></div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px;">
           <div>
-            <label style="font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:6px;">Jumlah Robux</label>
+            <label style="font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:6px;">Robux Didapat</label>
             <input id="evRobux" type="number" placeholder="Contoh: 100" style="width:100%;padding:12px 14px;background:#0f1117;border:2px solid var(--border);border-radius:12px;color:var(--text);font-family:'Nunito',sans-serif;font-size:16px;font-weight:700;outline:none;" />
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:6px;">Harga Gamepass</label>
+            <input id="evGamepass" type="number" placeholder="Contoh: 143" style="width:100%;padding:12px 14px;background:#0f1117;border:2px solid var(--border);border-radius:12px;color:var(--text);font-family:'Nunito',sans-serif;font-size:16px;font-weight:700;outline:none;" />
           </div>
           <div>
             <label style="font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:6px;">Max Peserta</label>
