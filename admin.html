@@ -7,7 +7,6 @@
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   import { getFirestore, collection, getDocs, deleteDoc, doc, updateDoc, setDoc, getDoc, orderBy, query } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
   const firebaseConfig = {
@@ -20,20 +19,61 @@
   };
 
   const app = initializeApp(firebaseConfig);
-  const auth = getAuth(app);
   const db = getFirestore(app);
-  const provider = new GoogleAuthProvider();
 
-  const ADMIN_EMAIL = "roichannoob@gmail.com";
-
+  // LOGIN DENGAN PASSWORD DARI FIRESTORE
   window._login = async () => {
-    try { await signInWithPopup(auth, provider); }
-    catch(e) { alert("Login gagal: " + e.message); }
+    const input = document.getElementById('passInput');
+    const val = input.value.trim();
+    const errEl = document.getElementById('passErr');
+    if (!val) { errEl.textContent = '⚠️ Masukkan password!'; errEl.style.display = 'block'; return; }
+
+    const btn = document.getElementById('loginBtn');
+    btn.disabled = true; btn.textContent = '⏳ Mengecek...';
+
+    try {
+      const snap = await getDoc(doc(db, "config", "admin"));
+      if (!snap.exists()) { errEl.textContent = '❌ Config tidak ditemukan!'; errEl.style.display = 'block'; btn.disabled = false; btn.textContent = 'Masuk'; return; }
+      const correctPass = snap.data().password;
+      if (val === correctPass) {
+        sessionStorage.setItem('adminAuth', 'true');
+        showDashboard();
+      } else {
+        errEl.textContent = '❌ Password salah!';
+        errEl.style.display = 'block';
+        input.value = '';
+        input.classList.add('err');
+        setTimeout(() => input.classList.remove('err'), 400);
+      }
+    } catch(e) {
+      errEl.textContent = '❌ Error: ' + e.message;
+      errEl.style.display = 'block';
+    }
+    btn.disabled = false; btn.textContent = 'Masuk';
   };
 
-  // Tangkap hasil redirect setelah kembali
-  getRedirectResult(auth).catch(e => console.warn("Redirect error:", e));
-  window._logout = async () => await signOut(auth);
+  window._logout = () => {
+    sessionStorage.removeItem('adminAuth');
+    document.getElementById('dashboard').classList.add('hidden');
+    document.getElementById('loginPage').classList.remove('hidden');
+    document.getElementById('passInput').value = '';
+    document.getElementById('passErr').style.display = 'none';
+  };
+
+  function showDashboard() {
+    document.getElementById('loginPage').classList.add('hidden');
+    document.getElementById('dashboard').classList.remove('hidden');
+    window._loadKlaim();
+    window._loadPermintaan();
+    window._loadEvent();
+  }
+
+  // Cek session
+  window.addEventListener('load', () => {
+    if (sessionStorage.getItem('adminAuth') === 'true') {
+      showDashboard();
+    }
+  });
 
   window._deleteKlaim = async (id) => {
     if (!confirm("Hapus data ini?")) return;
@@ -43,7 +83,6 @@
 
   window._approvePermintaan = async (id, username) => {
     if (!confirm(`Setujui permintaan klaim ulang dari ${username}?`)) return;
-    // Hapus dari klaim lama dulu
     try {
       const snap = await getDocs(collection(db, "klaim"));
       snap.forEach(async d => {
@@ -52,9 +91,8 @@
         }
       });
     } catch(e) {}
-    // Update status permintaan
     await updateDoc(doc(db, "permintaan", id), { status: 'approved' });
-    alert(`✅ Permintaan ${username} disetujui! Mereka sekarang bisa klaim ulang.`);
+    alert(`✅ Permintaan ${username} disetujui!`);
     window._loadPermintaan();
   };
 
@@ -74,8 +112,8 @@
       const docs = [];
       snap.forEach(d => docs.push({ id: d.id, ...d.data() }));
       document.getElementById('statTotal').textContent = docs.length;
-      const today = new Date().toLocaleDateString('id-ID', {day:'2-digit',month:'2-digit',year:'numeric'});
-      const todayCount = docs.filter(d => d.tanggal && d.tanggal.includes(today.split('/').join('/'))).length;
+      const today = new Date().toLocaleDateString('id-ID');
+      const todayCount = docs.filter(d => d.tanggal && d.tanggal.startsWith(today.split('/').reverse().join('/'))).length;
       document.getElementById('statToday').textContent = todayCount;
       const tbody = document.getElementById('tbodyKlaim');
       if (docs.length === 0) {
@@ -162,8 +200,6 @@
         document.getElementById('btnMatikan').classList.add('hidden');
       }
     } catch(e) {}
-
-    // Load peserta event
     try {
       const q = query(collection(db, "event_klaim"), orderBy("timestamp", "desc"));
       const snap = await getDocs(q);
@@ -171,7 +207,7 @@
       snap.forEach(d => docs.push({ id: d.id, ...d.data() }));
       const tbody = document.getElementById('tbodyEvent');
       if (docs.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:32px;color:#aaa;font-weight:700;">Belum ada peserta event 😊</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="3" style="text-align:center;padding:32px;color:#aaa;font-weight:700;">Belum ada peserta event 😊</td></tr>`;
       } else {
         tbody.innerHTML = docs.map(d => `
           <tr>
@@ -195,8 +231,7 @@
     const eventId = 'event_' + Date.now();
     await setDoc(doc(db, "config", "event"), {
       active: true, robux: parseInt(robux), maxPeserta: parseInt(max),
-      pesertaCount: 0, eventId,
-      mulai: new Date().toLocaleString('id-ID')
+      pesertaCount: 0, eventId, mulai: new Date().toLocaleString('id-ID')
     });
     alert('✅ Event dadakan aktif!');
     window._loadEvent();
@@ -208,71 +243,52 @@
     alert('Event dimatikan.');
     window._loadEvent();
   };
+
+  window._switchTab = (tab) => {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
     document.getElementById('tab-'+tab).classList.add('active');
     document.getElementById('content-'+tab).classList.remove('hidden');
   };
-
-  onAuthStateChanged(auth, (user) => {
-    const loginPage = document.getElementById('loginPage');
-    const dashboard = document.getElementById('dashboard');
-    const notAdmin = document.getElementById('notAdmin');
-    if (user) {
-      if (user.email === ADMIN_EMAIL) {
-        loginPage.classList.add('hidden'); notAdmin.classList.add('hidden');
-        dashboard.classList.remove('hidden');
-        document.getElementById('adminName').textContent = user.displayName;
-        document.getElementById('adminEmail').textContent = user.email;
-        document.getElementById('adminPhoto').src = user.photoURL;
-        window._loadKlaim();
-        window._loadPermintaan();
-        window._loadEvent();
-      } else {
-        loginPage.classList.add('hidden'); dashboard.classList.add('hidden');
-        notAdmin.classList.remove('hidden');
-      }
-    } else {
-      loginPage.classList.remove('hidden');
-      dashboard.classList.add('hidden'); notAdmin.classList.add('hidden');
-    }
-  });
 </script>
 <style>
   :root { --primary: #00c853; --bg: #0f1117; --card: #1a1d27; --border: #2a2d3d; --text: #e8eaf6; --muted: #6b7280; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Nunito', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  /* LOGIN */
   .login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
   .login-box { background: var(--card); border: 1.5px solid var(--border); border-radius: 28px; padding: 48px 36px; text-align: center; max-width: 400px; width: 100%; }
   .login-icon { font-size: 64px; margin-bottom: 16px; }
-  .login-box h1 { font-size: 1.8rem; font-weight: 900; }
-  .login-box p { font-size: 14px; color: var(--muted); margin: 8px 0 32px; font-weight: 600; }
-  .btn-google { display: inline-flex; align-items: center; gap: 12px; background: white; color: #333; border: none; border-radius: 14px; padding: 14px 28px; font-family: 'Nunito', sans-serif; font-size: 15px; font-weight: 800; cursor: pointer; width: 100%; justify-content: center; transition: transform .2s; }
-  .btn-google:hover { transform: translateY(-2px); }
-  .btn-google img { width: 22px; }
-  .notadmin-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
-  .notadmin-box { background: var(--card); border: 1.5px solid #3d1a1a; border-radius: 28px; padding: 48px 36px; text-align: center; max-width: 400px; width: 100%; }
+  .login-box h1 { font-size: 1.8rem; font-weight: 900; margin-bottom: 6px; }
+  .login-box p { font-size: 14px; color: var(--muted); margin-bottom: 28px; font-weight: 600; }
+  .pass-field { position: relative; margin-bottom: 10px; }
+  .pass-field input { width: 100%; padding: 14px 48px 14px 16px; background: #0f1117; border: 2px solid var(--border); border-radius: 14px; color: var(--text); font-family: 'Nunito', sans-serif; font-size: 16px; font-weight: 700; outline: none; transition: border-color .2s; }
+  .pass-field input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(0,200,83,0.15); }
+  .pass-field input.err { border-color: #ff4757; animation: shake .35s ease; }
+  @keyframes shake { 0%,100% { transform: translateX(0); } 25%,75% { transform: translateX(-6px); } 50% { transform: translateX(6px); } }
+  .toggle-pass { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--muted); cursor: pointer; font-size: 18px; }
+  .err-msg { font-size: 12px; font-weight: 700; color: #ff4757; margin-bottom: 12px; display: none; text-align: left; }
+  .btn-login { width: 100%; padding: 14px; background: linear-gradient(135deg, #00c853, #00e676); color: white; border: none; border-radius: 14px; font-family: 'Nunito', sans-serif; font-size: 16px; font-weight: 800; cursor: pointer; transition: transform .18s; }
+  .btn-login:hover { transform: translateY(-2px); }
+  .btn-login:disabled { opacity: .6; cursor: not-allowed; transform: none; }
+
+  /* DASHBOARD */
   .topbar { background: var(--card); border-bottom: 1.5px solid var(--border); padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-  .topbar-left { display: flex; align-items: center; gap: 12px; }
-  .admin-info { display: flex; align-items: center; gap: 10px; }
-  .admin-photo { width: 36px; height: 36px; border-radius: 50%; border: 2px solid var(--primary); }
-  .admin-name { font-size: 13px; font-weight: 800; }
-  .admin-email { font-size: 11px; color: var(--muted); font-weight: 600; }
-  .btn-logout { background: #1a0f0f; color: #ff4757; border: 1.5px solid #3d1a1a; border-radius: 10px; padding: 8px 16px; font-family: 'Nunito', sans-serif; font-size: 13px; font-weight: 800; cursor: pointer; }
   .content { max-width: 1000px; margin: 0 auto; padding: 24px 16px; }
   .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 24px; }
   .stat-card { background: var(--card); border: 1.5px solid var(--border); border-radius: 18px; padding: 20px; text-align: center; }
   .stat-num { font-size: 2.2rem; font-weight: 900; color: var(--primary); letter-spacing: -1px; }
-  .stat-lbl { font-size: 11px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }
   .stat-num.orange { color: #ff9f43; }
-  /* TABS */
-  .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+  .stat-lbl { font-size: 11px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
   .tab-btn { padding: 10px 20px; border-radius: 12px; border: 1.5px solid var(--border); background: var(--card); color: var(--muted); font-family: 'Nunito', sans-serif; font-size: 13px; font-weight: 800; cursor: pointer; transition: all .2s; }
   .tab-btn.active { background: var(--primary); border-color: var(--primary); color: white; }
   .table-card { background: var(--card); border: 1.5px solid var(--border); border-radius: 18px; overflow: hidden; }
   .table-header { display: flex; align-items: center; justify-content: space-between; padding: 18px 20px; border-bottom: 1.5px solid var(--border); flex-wrap: wrap; gap: 10px; }
   .table-title { font-size: 1rem; font-weight: 900; }
   .btn-refresh { background: #0a2e14; color: var(--primary); border: 1.5px solid #1a4d2a; border-radius: 10px; padding: 8px 16px; font-family: 'Nunito', sans-serif; font-size: 13px; font-weight: 800; cursor: pointer; }
+  .btn-logout { background: #1a0f0f; color: #ff4757; border: 1.5px solid #3d1a1a; border-radius: 10px; padding: 8px 16px; font-family: 'Nunito', sans-serif; font-size: 13px; font-weight: 800; cursor: pointer; }
   table { width: 100%; border-collapse: collapse; }
   th { padding: 12px 16px; text-align: left; font-size: 11px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1.5px solid var(--border); }
   td { padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,0.04); vertical-align: middle; }
@@ -280,7 +296,7 @@
   tr:hover td { background: rgba(255,255,255,0.02); }
   .loading { padding: 48px; text-align: center; color: var(--muted); font-weight: 700; font-size: 14px; }
   .hidden { display: none !important; }
-  @media(max-width:500px) { .stats-grid { grid-template-columns: repeat(3,1fr); gap: 8px; } .stat-num { font-size: 1.6rem; } th:nth-child(2), td:nth-child(2) { display: none; } }
+  @media(max-width:500px) { .stats-grid { gap: 8px; } .stat-num { font-size: 1.6rem; } }
 </style>
 </head>
 <body>
@@ -290,43 +306,27 @@
   <div class="login-box">
     <div class="login-icon">🔐</div>
     <h1>Admin Dashboard</h1>
-    <p>Login dengan akun Google admin</p>
-    <button class="btn-google" onclick="window._login()">
-      <img src="https://www.google.com/favicon.ico" alt="G" /> Login dengan Google
-    </button>
-  </div>
-</div>
-
-<!-- NOT ADMIN -->
-<div id="notAdmin" class="notadmin-wrap hidden">
-  <div class="notadmin-box">
-    <div style="font-size:64px;margin-bottom:16px;">🚫</div>
-    <h1 style="font-size:1.5rem;font-weight:900;color:#ff4757;margin-bottom:8px;">Akses Ditolak</h1>
-    <p style="color:var(--muted);font-size:14px;margin-bottom:24px;font-weight:600;">Bukan akun admin.</p>
-    <button class="btn-google" onclick="window._logout()">🔙 Ganti Akun</button>
+    <p>Masukkan password untuk masuk</p>
+    <div class="pass-field">
+      <input type="password" id="passInput" placeholder="Password admin" onkeydown="if(event.key==='Enter')window._login()" />
+      <button class="toggle-pass" onclick="const i=document.getElementById('passInput');i.type=i.type==='password'?'text':'password'">👁</button>
+    </div>
+    <div class="err-msg" id="passErr"></div>
+    <button class="btn-login" id="loginBtn" onclick="window._login()">Masuk →</button>
   </div>
 </div>
 
 <!-- DASHBOARD -->
 <div id="dashboard" class="hidden">
   <div class="topbar">
-    <div class="topbar-left">
+    <div style="display:flex;align-items:center;gap:10px;">
       <div style="font-size:24px;">🎮</div>
       <div>
         <div style="font-size:1.1rem;font-weight:900;">Robux Gratis — Admin</div>
         <div style="font-size:11px;color:var(--muted);font-weight:600;">Dashboard monitoring</div>
       </div>
     </div>
-    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-      <div class="admin-info">
-        <img class="admin-photo" id="adminPhoto" src="" alt="admin" />
-        <div>
-          <div class="admin-name" id="adminName">—</div>
-          <div class="admin-email" id="adminEmail">—</div>
-        </div>
-      </div>
-      <button class="btn-logout" onclick="window._logout()">Logout</button>
-    </div>
+    <button class="btn-logout" onclick="window._logout()">🚪 Logout</button>
   </div>
 
   <div class="content">
@@ -367,9 +367,9 @@
         <tbody id="tbodyReq"></tbody></table>
       </div>
     </div>
+
     <!-- TAB EVENT -->
     <div id="content-event" class="tab-content hidden" style="margin-top:0;">
-      <!-- Event Control -->
       <div style="background:var(--card);border:1.5px solid var(--border);border-radius:18px;padding:24px;margin-bottom:16px;">
         <div style="font-size:1rem;font-weight:900;margin-bottom:16px;">⚡ Kontrol Event Dadakan</div>
         <div id="evStatus" style="margin-bottom:18px;"></div>
@@ -388,7 +388,6 @@
           <button id="btnMatikan" onclick="window._matikanEvent()" class="hidden" style="flex:1;padding:13px;background:#2a1a1a;color:#ff4757;border:1.5px solid #3d1a1a;border-radius:12px;font-family:'Nunito',sans-serif;font-size:14px;font-weight:800;cursor:pointer;">⛔ Matikan Event</button>
         </div>
       </div>
-      <!-- Peserta Event -->
       <div class="table-card">
         <div class="table-header">
           <div class="table-title">⚡ Peserta Event</div>
@@ -398,8 +397,9 @@
         <tbody id="tbodyEvent"></tbody></table>
       </div>
     </div>
-</html>
-</div>
+
+  </div>
 </div>
 
 </body>
+</html>
