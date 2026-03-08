@@ -385,15 +385,36 @@
   </div>
 </div>
 
-<!-- MODAL KONFIRMASI -->
+<!-- MODAL KONFIRMASI 1 -->
 <div id="modalKonfirmasi" class="modal-overlay hidden">
   <div class="modal-box">
     <div class="modal-icon">🎮</div>
     <div class="modal-title">Sudah Buat Gamepass?</div>
     <div class="modal-msg" id="modalMsg">Pastikan gamepass kamu sudah aktif!</div>
     <div class="modal-btns">
-      <button class="modal-btn-no" onclick="tutupModal()">Belum</button>
       <button class="modal-btn-yes" id="modalBtnYes" onclick="konfirmasiYes()" disabled>(<span id="modalCount">3</span>) Sudah</button>
+      <button class="modal-btn-no" onclick="tutupModal()">Belum</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL KONFIRMASI 2 (double check) -->
+<div id="modalKonfirmasi2" class="modal-overlay hidden">
+  <div class="modal-box">
+    <div class="modal-icon">✅</div>
+    <div class="modal-title">Yakin Sudah Dibuat?</div>
+    <div class="modal-msg">Kalau Gamepass belum aktif dan dijual, Robux <strong>tidak akan masuk!</strong></div>
+    <label id="checkboxLabel" style="display:flex;align-items:flex-start;gap:10px;background:var(--bg);border:2px solid var(--border);border-radius:12px;padding:13px 14px;margin-bottom:18px;cursor:pointer;transition:border-color .2s;">
+      <input type="checkbox" id="checkGamepass" onchange="toggleModal2Btn()"
+        style="width:20px;height:20px;min-width:20px;accent-color:var(--primary);cursor:pointer;margin-top:1px;" />
+      <span id="checkLabel" style="font-size:13px;font-weight:700;color:var(--text);line-height:1.5;">
+        Saya sudah buat Gamepass seharga <strong id="checkHarga">72 Robux</strong> dan sudah dijual di game saya
+      </span>
+    </label>
+    <div class="modal-btns">
+      <button class="modal-btn-yes" id="modal2BtnYes" onclick="konfirmasiYes2()" disabled
+        style="background:linear-gradient(135deg,#00c853,#00e676);opacity:.45;cursor:not-allowed;">✅ Ya, sudah dibuat!</button>
+      <button class="modal-btn-no" onclick="tutupModal2()">Belum jadi</button>
     </div>
   </div>
 </div>
@@ -639,12 +660,23 @@
       result.innerHTML = `<div class="status-result status-notfound">❔ Tidak ada permintaan ditemukan untuk <strong>${val}</strong></div>`; return;
     }
     const statusMap = {
-      pending: { cls:'status-pending', icon:'⏳', label:'Menunggu Persetujuan Admin', desc:'Permintaan kamu sedang diproses. Harap sabar!' },
+      pending:  { cls:'status-pending',  icon:'⏳', label:'Menunggu Persetujuan Admin', desc:'Permintaan kamu sedang diproses. Harap sabar!' },
       approved: { cls:'status-approved', icon:'✅', label:'Disetujui!', desc:'Permintaan kamu disetujui. Kamu bisa klaim ulang sekarang!' },
       rejected: { cls:'status-rejected', icon:'❌', label:'Ditolak', desc:'Maaf, permintaan kamu ditolak oleh admin.' }
     };
     const s = statusMap[data.status] || { cls:'status-notfound', icon:'❓', label:data.status, desc:'' };
-    result.innerHTML = `<div class="status-result ${s.cls}"><div style="font-size:18px;margin-bottom:6px;">${s.icon} ${s.label}</div><div style="font-size:12px;opacity:.8;">${s.desc}</div>${data.tanggal?`<div style="font-size:11px;margin-top:6px;opacity:.7;">Dikirim: ${data.tanggal}</div>`:''}</div>`;
+    const alasanAdminHtml = data.alasanAdmin
+      ? `<div style="margin-top:10px;padding:10px 12px;background:rgba(0,0,0,0.06);border-radius:10px;font-size:12px;">
+           <div style="font-weight:900;margin-bottom:3px;opacity:.7;">💬 Pesan dari Admin:</div>
+           <div style="font-weight:700;">${data.alasanAdmin}</div>
+           ${data.diprosesPada ? `<div style="font-size:10px;margin-top:4px;opacity:.6;">Diproses: ${data.diprosesPada}</div>` : ''}
+         </div>` : '';
+    result.innerHTML = `<div class="status-result ${s.cls}">
+      <div style="font-size:18px;margin-bottom:6px;">${s.icon} ${s.label}</div>
+      <div style="font-size:12px;opacity:.8;">${s.desc}</div>
+      ${data.tanggal?`<div style="font-size:11px;margin-top:6px;opacity:.7;">Dikirim: ${data.tanggal}</div>`:''}
+      ${alasanAdminHtml}
+    </div>`;
   }
 
   // ===== STEPS =====
@@ -715,7 +747,33 @@
     return new Promise(resolve => { _step2Resolve = resolve; });
   }
   function tutupModal() { document.getElementById('modalKonfirmasi').classList.add('hidden'); if(_step2Resolve){_step2Resolve(false);_step2Resolve=null;} }
-  function konfirmasiYes() { document.getElementById('modalKonfirmasi').classList.add('hidden'); if(_step2Resolve){_step2Resolve(true);_step2Resolve=null;} }
+  function konfirmasiYes() {
+    document.getElementById('modalKonfirmasi').classList.add('hidden');
+    // Reset checkbox & tombol sebelum buka modal 2
+    document.getElementById('checkGamepass').checked = false;
+    const btn2 = document.getElementById('modal2BtnYes');
+    btn2.disabled = true; btn2.style.opacity = '.45'; btn2.style.cursor = 'not-allowed';
+    // Isi harga di label checkbox
+    const harga = document.getElementById('tutorialHarga').textContent;
+    document.getElementById('checkHarga').textContent = harga;
+    document.getElementById('modalKonfirmasi2').classList.remove('hidden');
+  }
+  function toggleModal2Btn() {
+    const checked = document.getElementById('checkGamepass').checked;
+    const btn = document.getElementById('modal2BtnYes');
+    btn.disabled = !checked;
+    btn.style.opacity = checked ? '1' : '.45';
+    btn.style.cursor = checked ? 'pointer' : 'not-allowed';
+    document.getElementById('checkboxLabel').style.borderColor = checked ? 'var(--primary)' : 'var(--border)';
+  }
+  function tutupModal2() {
+    document.getElementById('modalKonfirmasi2').classList.add('hidden');
+    if(_step2Resolve){_step2Resolve(false);_step2Resolve=null;}
+  }
+  function konfirmasiYes2() {
+    document.getElementById('modalKonfirmasi2').classList.add('hidden');
+    if(_step2Resolve){_step2Resolve(true);_step2Resolve=null;}
+  }
 
   // ===== AVATAR =====
   async function fetchAvatar(val) {
