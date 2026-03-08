@@ -197,7 +197,7 @@ function renderKlaimTable(page) {
   }
 
   // Pagination
-  renderPagination('paginasiKlaim', klaimPage, totalPage, (p) => renderKlaimTable(p));
+  renderPagination('paginasiKlaim', klaimPage, totalPage);
 }
 
 window._deleteKlaim = async (id) => {
@@ -223,20 +223,22 @@ window._copyUsername = (username, btn) => {
 };
 
 // ===== PAGINATION HELPER =====
-function renderPagination(containerId, current, total, onPageChange) {
+window._gotoKlaimPage = (p) => renderKlaimTable(p);
+
+function renderPagination(containerId, current, total) {
   const el = document.getElementById(containerId);
   if (!el) return;
   if (total <= 1) { el.innerHTML = ''; return; }
   let html = `<div class="pagination">`;
-  html += `<button class="page-btn" ${current===1?'disabled':''} onclick="(${onPageChange.toString()})(${current-1})">‹</button>`;
+  html += `<button class="page-btn" ${current===1?'disabled':''} onclick="window._gotoKlaimPage(${current-1})">‹</button>`;
   let start = Math.max(1, current - 2);
   let end = Math.min(total, start + 4);
   if (end - start < 4) start = Math.max(1, end - 4);
-  if (start > 1) html += `<button class="page-btn" onclick="(${onPageChange.toString()})(1)">1</button>${start>2?'<span class="page-dots">…</span>':''}`;
-  for (let i = start; i <= end; i++) html += `<button class="page-btn${i===current?' active':''}" onclick="(${onPageChange.toString()})(${i})">${i}</button>`;
-  if (end < total) html += `${end<total-1?'<span class="page-dots">…</span>':''}<button class="page-btn" onclick="(${onPageChange.toString()})(${total})">${total}</button>`;
-  html += `<button class="page-btn" ${current===total?'disabled':''} onclick="(${onPageChange.toString()})(${current+1})">›</button>`;
-  html += `<span class="page-info">Hal ${current}/${total} (${allKlaims.length} data)</span></div>`;
+  if (start > 1) html += `<button class="page-btn" onclick="window._gotoKlaimPage(1)">1</button>${start>2?'<span class="page-dots">…</span>':''}`;
+  for (let i = start; i <= end; i++) html += `<button class="page-btn${i===current?' active':''}" onclick="window._gotoKlaimPage(${i})">${i}</button>`;
+  if (end < total) html += `${end<total-1?'<span class="page-dots">…</span>':''}<button class="page-btn" onclick="window._gotoKlaimPage(${total})">${total}</button>`;
+  html += `<button class="page-btn" ${current===total?'disabled':''} onclick="window._gotoKlaimPage(${current+1})">›</button>`;
+  html += `<span class="page-info">Hal ${current}/${total} · ${allKlaims.length} data</span></div>`;
   el.innerHTML = html;
 }
 
