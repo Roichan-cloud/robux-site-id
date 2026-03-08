@@ -7,7 +7,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { getAuth, GoogleAuthProvider, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   import { getFirestore, collection, getDocs, deleteDoc, doc, updateDoc, setDoc, getDoc, orderBy, query } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
   const firebaseConfig = {
@@ -28,9 +28,12 @@
   const ADMIN_UID = "qiRgq9L1jCXSWzGdptDEKLtdPSj2";
 
   window._login = async () => {
-    try { await signInWithPopup(auth, provider); }
+    try { await signInWithRedirect(auth, provider); }
     catch(e) { alert("Login gagal: " + e.message); }
   };
+
+  // Tangkap hasil redirect setelah kembali
+  getRedirectResult(auth).catch(e => console.warn("Redirect error:", e));
   window._logout = async () => await signOut(auth);
 
   window._deleteKlaim = async (id) => {
