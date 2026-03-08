@@ -8,7 +8,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getFirestore, collection, addDoc, getDocs, query, where, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import { getFirestore, collection, addDoc, getDocs, getDoc, setDoc, query, where, serverTimestamp, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyCsMXNyb8EDDEymYc-dtC9eZx8qorgmyV8",
@@ -62,7 +62,63 @@
     } catch(e) { return false; }
   };
 
-  window.addEventListener('load', () => window._loadCounter());
+  window.addEventListener('load', () => {
+    window._loadCounter();
+    window._listenEvent();
+  });
+
+  window._listenEvent = function() {
+    try {
+      const eventRef = doc(db, "config", "event");
+      onSnapshot(eventRef, (snap) => {
+        if (!snap.exists()) { hideEvent(); return; }
+        const data = snap.data();
+        if (!data.active) { hideEvent(); return; }
+        showEvent(data);
+      });
+    } catch(e) {}
+  };
+
+  function showEvent(data) {
+    const banner = document.getElementById('eventBanner');
+    if (!banner) return;
+    document.getElementById('eventRobux').textContent = data.robux || '?';
+    document.getElementById('eventSisa').textContent = (data.maxPeserta - (data.pesertaCount || 0));
+    document.getElementById('eventMax').textContent = data.maxPeserta;
+    banner.classList.remove('hidden');
+  }
+
+  function hideEvent() {
+    const banner = document.getElementById('eventBanner');
+    if (banner) banner.classList.add('hidden');
+  }
+
+  window._klaimEvent = async function(username, userId, avatarUrl) {
+    try {
+      const eventRef = doc(db, "config", "event");
+      const snap = await getDoc(eventRef);
+      if (!snap.exists() || !snap.data().active) return { ok: false, msg: 'Event sudah berakhir!' };
+      const data = snap.data();
+      const sisa = data.maxPeserta - (data.pesertaCount || 0);
+      if (sisa <= 0) return { ok: false, msg: 'Slot event sudah penuh!' };
+      // Cek apakah sudah klaim event ini
+      const q = query(collection(db, "event_klaim"), where("usernameLower", "==", username.toLowerCase()), where("eventId", "==", data.eventId));
+      const cek = await getDocs(q);
+      if (!cek.empty) return { ok: false, msg: 'Kamu sudah klaim event ini!' };
+      // Simpan klaim event
+      await addDoc(collection(db, "event_klaim"), {
+        username, usernameLower: username.toLowerCase(),
+        userId, avatarUrl,
+        robux: data.robux,
+        eventId: data.eventId,
+        timestamp: serverTimestamp(),
+        tanggal: new Date().toLocaleString('id-ID')
+      });
+      // Update counter peserta
+      await setDoc(eventRef, { ...data, pesertaCount: (data.pesertaCount || 0) + 1 }, { merge: true });
+      return { ok: true, robux: data.robux };
+    } catch(e) { return { ok: false, msg: 'Gagal klaim event. Coba lagi!' }; }
+  };
 </script>
 <style>
   :root {
@@ -78,7 +134,7 @@
   @keyframes rise { 0% { transform: translateY(110vh); opacity: 0; } 10% { opacity: 0.18; } 90% { opacity: 0.18; } 100% { transform: translateY(-10vh); opacity: 0; } }
   .wrap { max-width: 520px; margin: 0 auto; padding: 0 16px 60px; position: relative; z-index: 1; }
   header { text-align: center; padding: 44px 0 20px; }
-  .logo-box { display: inline-flex; align-items: center; justify-content: center; width: 76px; height: 76px; background: linear-gradient(135deg, #00c853, #00e676); border-radius: 24px; font-size: 38px; box-shadow: 0 8px 28px rgba(0,200,83,0.35); margin-bottom: 16px; animation: logoFloat 3s ease-in-out infinite; }
+  .logo-box { display: inline-flex; align-items: center; justify-content: center; width: 76px; height: 76px; background: transparent; border-radius: 0; font-size: 38px; margin-bottom: 16px; animation: logoFloat 3s ease-in-out infinite; }
   @keyframes logoFloat { 0%,100% { transform: translateY(0) rotate(-3deg); } 50% { transform: translateY(-8px) rotate(3deg); } }
   header h1 { font-size: clamp(2rem, 7vw, 3rem); font-weight: 900; color: var(--text); letter-spacing: -1px; }
   header h1 span { color: var(--primary); }
@@ -144,6 +200,22 @@
   @keyframes tIn { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
   .win-amount { background: linear-gradient(135deg, #f0fff6, #e0fff0); border: 2px solid var(--border); border-radius: 18px; padding: 22px; margin: 14px 0; text-align: center; }
   .win-rbx { font-size: 3.5rem; font-weight: 900; color: var(--primary); letter-spacing: -2px; }
+  /* EVENT BANNER */
+  .event-banner { background: linear-gradient(135deg, #ff4757, #ff6b35); border-radius: 20px; padding: 20px; margin: 16px 0; color: white; position: relative; overflow: hidden; box-shadow: 0 8px 28px rgba(255,71,87,0.35); animation: popUp .5s cubic-bezier(.34,1.56,.64,1) both; }
+  .event-banner::before { content: ''; position: absolute; top: -30px; right: -30px; width: 120px; height: 120px; background: rgba(255,255,255,0.1); border-radius: 50%; }
+  .event-banner::after { content: ''; position: absolute; bottom: -20px; left: -20px; width: 80px; height: 80px; background: rgba(255,255,255,0.08); border-radius: 50%; }
+  .event-tag { display: inline-flex; align-items: center; gap: 5px; background: rgba(255,255,255,0.2); border-radius: 50px; padding: 4px 12px; font-size: 11px; font-weight: 800; margin-bottom: 10px; letter-spacing: 0.5px; }
+  .event-tag-dot { width: 6px; height: 6px; background: #ffeb3b; border-radius: 50%; animation: pulse 1s ease-in-out infinite; }
+  .event-robux-big { font-size: 3rem; font-weight: 900; letter-spacing: -2px; line-height: 1; }
+  .event-robux-big span { font-size: 1rem; font-weight: 700; opacity: 0.8; }
+  .event-slot { font-size: 13px; font-weight: 700; opacity: 0.9; margin-top: 6px; }
+  .event-slot strong { color: #ffeb3b; }
+  .btn-event { background: white; color: #ff4757; border: none; border-radius: 14px; padding: 13px; font-family: 'Nunito', sans-serif; font-size: 15px; font-weight: 900; cursor: pointer; width: 100%; margin-top: 14px; display: flex; align-items: center; justify-content: center; gap: 8px; transition: transform .18s, box-shadow .18s; box-shadow: 0 4px 14px rgba(0,0,0,0.15); }
+  .btn-event:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.2); }
+  .btn-event:disabled { opacity: .6; cursor: not-allowed; transform: none; }
+  /* EVENT SUCCESS */
+  .event-win { background: linear-gradient(135deg, #ff4757, #ff6b35); border-radius: 18px; padding: 22px; margin: 14px 0; text-align: center; color: white; }
+  .event-win-rbx { font-size: 3rem; font-weight: 900; letter-spacing: -2px; }
   .hidden { display: none !important; }
   footer { text-align: center; padding: 28px 0 10px; font-size: 12px; color: var(--muted); font-weight: 600; }
   footer a { color: var(--primary); text-decoration: none; font-weight: 800; }
@@ -180,6 +252,14 @@
       <div class="s-dot" id="d3">✓</div>
     </div>
   </header>
+
+  <!-- EVENT BANNER -->
+  <div id="eventBanner" class="event-banner hidden">
+    <div class="event-tag"><div class="event-tag-dot"></div> EVENT DADAKAN 🔥</div>
+    <div class="event-robux-big"><img src="robux.png" style="width:36px;height:36px;vertical-align:middle;margin-right:4px;" /><span id="eventRobux">?</span> <span>Robux</span></div>
+    <div class="event-slot">Sisa slot: <strong><span id="eventSisa">?</span></strong> dari <span id="eventMax">?</span> orang</div>
+    <button class="btn-event" id="eventBtn" onclick="klaimEvent()">⚡ Klaim Event Sekarang!</button>
+  </div>
 
   <!-- STEP 1 -->
   <div id="s1" class="card">
@@ -221,6 +301,30 @@
       <p style="font-size:13px;color:var(--muted);font-weight:700;">Tunggu persetujuan admin ya!</p>
     </div>
     <div class="alert a-info"><span>💡</span><span>Admin akan memproses permintaan kamu secepatnya.</span></div>
+    <button class="btn btn-ghost" onclick="resetAll()">🔄 Kembali ke Awal</button>
+  </div>
+
+  <!-- EVENT SUCCESS -->
+  <div id="sEventWin" class="card hidden">
+    <div class="win-wrap">
+      <div class="confetti">🎊🔥🎊🔥🎊</div>
+      <div class="trophy">⚡</div>
+    </div>
+    <h2 style="text-align:center;font-size:1.7rem;font-weight:900;color:var(--text);margin:10px 0 4px">Event Berhasil! 🔥</h2>
+    <p style="text-align:center;color:var(--muted);font-size:13px;margin-bottom:18px;font-weight:700">Kamu berhasil klaim event dadakan!</p>
+    <div class="avatar-card">
+      <img class="avatar-img" id="eventWinAvatar" src="" alt="avatar" onerror="this.style.display='none'" />
+      <div><div class="u-name" id="eventWinUser">—</div><div class="u-sub" id="eventWinSub">✅ Berhasil Klaim Event</div></div>
+    </div>
+    <div class="event-win">
+      <div style="font-size:12px;opacity:0.8;margin-bottom:6px;font-weight:800;text-transform:uppercase;letter-spacing:1px;">Robux Event Sedang Dikirim</div>
+      <div class="event-win-rbx">⚡ <span id="eventWinRobux">?</span></div>
+      <div style="font-size:13px;opacity:0.8;margin-top:5px;font-weight:700;">Masuk dalam 1×24 jam</div>
+    </div>
+    <button class="btn btn-wa" onclick="shareWA()">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+      Share ke WhatsApp
+    </button>
     <button class="btn btn-ghost" onclick="resetAll()">🔄 Kembali ke Awal</button>
   </div>
 
@@ -303,9 +407,55 @@
   }
 
   function show(id) {
-    ['s1','s2','s3','sRequest','sRequestDone'].forEach(s => document.getElementById(s).classList.add('hidden'));
+    ['s1','s2','s3','sRequest','sRequestDone','sEventWin'].forEach(s => document.getElementById(s).classList.add('hidden'));
     document.getElementById(id).classList.remove('hidden');
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  async function klaimEvent() {
+    const inp = document.getElementById('uInput');
+    const val = inp.value.trim();
+    if (!val) {
+      alert('Masukkan username Roblox kamu dulu di form di bawah!');
+      inp.focus();
+      return;
+    }
+    const btn = document.getElementById('eventBtn');
+    btn.disabled = true;
+    btn.innerHTML = '⏳ Memproses...';
+
+    // Ambil avatar
+    let avatarUrl = '';
+    let userId = null;
+    let username = val;
+    try {
+      const r = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent('https://api.roblox.com/users/get-by-username?username='+val)}`);
+      const d = await r.json();
+      if (d && d.Id) {
+        userId = d.Id; username = d.Username || val;
+        try {
+          const t = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent('https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds='+d.Id+'&size=150x150&format=Png&isCircular=false')}`);
+          const td = await t.json();
+          if (td.data && td.data[0]) avatarUrl = td.data[0].imageUrl;
+        } catch(e2) {}
+      }
+    } catch(e) {}
+
+    const result = await window._klaimEvent(username, userId, avatarUrl);
+    btn.disabled = false;
+    btn.innerHTML = '⚡ Klaim Event Sekarang!';
+
+    if (!result.ok) {
+      alert(result.msg);
+      return;
+    }
+
+    document.getElementById('eventWinUser').textContent = username;
+    document.getElementById('eventWinAvatar').src = avatarUrl;
+    document.getElementById('eventWinRobux').textContent = result.robux;
+    document.getElementById('eventWinSub').textContent = `✅ Dapat ${result.robux} Robux dari Event`;
+    state.username = username;
+    show('sEventWin');
   }
 
   async function step1Next() {
