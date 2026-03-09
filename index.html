@@ -1457,14 +1457,20 @@
 
   // ===== RATE LIMIT — KIRIM PERMINTAAN =====
   async function kirimPermintaanRL() {
-    const username = document.getElementById('rlUsername').textContent.trim();
+    const usernameEl = document.getElementById('rlUsername');
+    const username = (usernameEl ? usernameEl.textContent.trim() : '') || state.username || '';
     const alasan = document.getElementById('rlAlasanInput').value.trim();
     const btn = document.getElementById('rlBtn');
+    if (!username || username === '-') {
+      await _ixAlert('👤', 'Username Kosong', 'Kembali ke awal dan masukkan username dulu.');
+      return;
+    }
     btn.disabled = true; btn.style.opacity = '.6';
     showLoading('Mengirim permintaan');
     try {
       await addDoc(collection(db, "permintaan_rl"), {
-        username, usernameLower: username.toLowerCase(),
+        username,
+        usernameLower: username.toLowerCase(),
         alasan: alasan || '-',
         timestamp: serverTimestamp(),
         tanggal: new Date().toLocaleString('id-ID'),
@@ -1473,8 +1479,9 @@
       hideLoading();
       show('sRateLimitDone');
     } catch(e) {
+      console.error('kirimPermintaanRL error:', e);
       hideLoading();
-      await _ixAlert('❌', 'Gagal', 'Gagal mengirim permintaan. Coba lagi.');
+      await _ixAlert('❌', 'Gagal', `Gagal mengirim: ${e.message || e.code || 'Coba lagi.'}`);
       btn.disabled = false; btn.style.opacity = '1';
     }
   }
