@@ -111,6 +111,14 @@
     } catch(e) {}
   };
 
+  function rankBadge(i) {
+    const labels = ['1','2','3','4','5'];
+    const cls = i === 0 ? 'lb-rank-1' : i === 1 ? 'lb-rank-2' : i === 2 ? 'lb-rank-3' : 'lb-rank-other';
+    const icons = ['★','★','★','',''];
+    const label = icons[i] ? `${icons[i]}` : labels[i];
+    return `<div class="lb-rank"><div class="lb-rank-badge ${cls}">${label}</div></div>`;
+  }
+
   function renderLeaderboardAnimated(docs) {
     const el = document.getElementById('leaderboardList');
     if (!el) return;
@@ -124,8 +132,8 @@
     const buildItems = (list, enterSet) => list.map((d, i) => {
       const masked = (d.username||'???').slice(0,2) + '***';
       const isNew = enterSet.has((d.username||'').toLowerCase());
-      return `<div class="lb-item${isNew?' lb-enter':''}" style="${isNew?`animation-delay:0ms`:''}">
-        <div class="lb-rank">${['🥇','🥈','🥉','4️⃣','5️⃣'][i]||'—'}</div>
+      return `<div class="lb-item${isNew?' lb-enter':''}">
+        ${rankBadge(i)}
         <div class="lb-name">${masked}</div>
         <div class="lb-badge">💎 ${d.robux||50} Rbx</div>
       </div>`;
@@ -136,7 +144,7 @@
       el.innerHTML = docs.map((d, i) => {
         const masked = (d.username||'???').slice(0,2) + '***';
         return `<div class="lb-item lb-enter" style="animation-delay:${i*90}ms">
-          <div class="lb-rank">${['🥇','🥈','🥉','4️⃣','5️⃣'][i]||'—'}</div>
+          ${rankBadge(i)}
           <div class="lb-name">${masked}</div>
           <div class="lb-badge">💎 ${d.robux||50} Rbx</div>
         </div>`;
@@ -435,7 +443,12 @@
   .lb-item.lb-exit { animation: lbOut .35s ease-in both; }
   @keyframes lbIn { from{opacity:0;transform:translateY(-36px)} to{opacity:1;transform:translateY(0)} }
   @keyframes lbOut { from{opacity:1;transform:translateY(0)} to{opacity:0;transform:translateY(36px)} }
-  .lb-rank { font-size:18px;min-width:28px; }
+  .lb-rank { min-width:28px;display:flex;align-items:center;justify-content:center; }
+  .lb-rank-badge { width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;flex-shrink:0; }
+  .lb-rank-1 { background:linear-gradient(135deg,#FFD700,#FFA500);color:#7a4800;box-shadow:0 3px 10px rgba(255,180,0,.35); }
+  .lb-rank-2 { background:linear-gradient(135deg,#C0C0C0,#9E9E9E);color:#3a3a3a;box-shadow:0 3px 8px rgba(150,150,150,.3); }
+  .lb-rank-3 { background:linear-gradient(135deg,#CD7F32,#A0522D);color:#fff;box-shadow:0 3px 8px rgba(160,80,30,.3); }
+  .lb-rank-other { background:var(--bg);color:var(--muted);border:1.5px solid var(--border); }
   .lb-avatar { width:36px;height:36px;border-radius:10px;border:2px solid var(--border);object-fit:cover; }
   .lb-avatar-empty { width:36px;height:36px;border-radius:10px;background:var(--bg);border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:16px; }
   .lb-avatar-anon { width:36px;height:36px;border-radius:10px;background:var(--bg);border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0; }
@@ -452,7 +465,8 @@
   .counter-digit.flip-in { transform:translateY(-100%); animation:digitFlip .45s cubic-bezier(.25,.8,.25,1) forwards; }
   @keyframes digitFlip { from{transform:translateY(-100%)} to{transform:translateY(0)} }
 
-  /* ===== CEK STATUS ===== */
+  #frontContent { transition: opacity .3s ease, transform .3s ease; }
+  #frontContent.hide { opacity: 0; transform: translateY(-10px); pointer-events: none; height: 0; overflow: hidden; margin: 0; }
   .status-card { background:var(--white);border:1.5px solid var(--border);border-radius:20px;padding:20px;margin:16px 0;box-shadow:var(--shadow); }
   .status-result { border-radius:14px;padding:16px;margin-top:12px;font-size:13px;font-weight:700; }
   .status-pending { background:#fff8e6;border:1.5px solid #ffd88a;color:#925200; }
@@ -483,6 +497,17 @@
   .win-rbx { font-size:3.5rem;font-weight:900;color:var(--primary);letter-spacing:-2px; }
   .event-win { background:linear-gradient(135deg,#ff4757,#ff6b35);border-radius:18px;padding:22px;margin:14px 0;text-align:center;color:white; }
   .event-win-rbx { font-size:3rem;font-weight:900;letter-spacing:-2px; }
+
+  /* ===== CUSTOM DIALOG (ganti alert) ===== */
+  #ixDialogOverlay { position:fixed;inset:0;background:rgba(0,0,0,0.4);backdrop-filter:blur(5px);z-index:2000;display:flex;align-items:center;justify-content:center;padding:20px;opacity:0;transition:opacity .2s ease; }
+  #ixDialogOverlay.show { opacity:1; }
+  #ixDialogBox { background:var(--white);border-radius:24px;padding:26px 22px;max-width:340px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,0.16);transform:scale(.93);transition:transform .25s cubic-bezier(.34,1.3,.64,1); }
+  #ixDialogOverlay.show #ixDialogBox { transform:scale(1); }
+  #ixDialogIcon { font-size:34px;text-align:center;margin-bottom:8px; }
+  #ixDialogTitle { font-size:1rem;font-weight:900;color:var(--text);text-align:center;margin-bottom:6px; }
+  #ixDialogMsg { font-size:13px;font-weight:600;color:var(--muted);text-align:center;line-height:1.6;margin-bottom:18px; }
+  #ixDialogOk { width:100%;padding:12px;border:none;border-radius:12px;background:linear-gradient(135deg,var(--primary),#00e676);color:white;font-family:'Nunito',sans-serif;font-size:14px;font-weight:800;cursor:pointer;transition:transform .18s; }
+  #ixDialogOk:hover { transform:translateY(-2px); }
 
   /* ===== LOADING ===== */
   .loading-overlay { position:fixed;inset:0;background:rgba(240,255,246,.92);backdrop-filter:blur(6px);z-index:998;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;animation:fadeIn .2s ease; }
@@ -532,6 +557,16 @@
 </script>
 
 <!-- LOADING -->
+<!-- CUSTOM DIALOG INDEX -->
+<div id="ixDialogOverlay" style="display:none;">
+  <div id="ixDialogBox">
+    <div id="ixDialogIcon"></div>
+    <div id="ixDialogTitle"></div>
+    <div id="ixDialogMsg"></div>
+    <button id="ixDialogOk">Oke</button>
+  </div>
+</div>
+
 <div id="loadingOverlay" class="loading-overlay hidden">
   <div class="loading-spinner"></div>
   <div class="loading-text">
@@ -608,6 +643,9 @@
     </div>
   </header>
 
+  <!-- KONTEN DEPAN (disembunyikan saat step 2/3 aktif) -->
+  <div id="frontContent">
+
   <!-- CARA KERJA -->
   <div class="cara-kerja-card">
     <div style="font-size:14px;font-weight:900;color:var(--text);margin-bottom:16px;">💡 Cara Kerja</div>
@@ -673,6 +711,8 @@
     <div id="eventCountdownWrap" class="event-countdown hidden">⏰ Berakhir dalam: <strong id="eventCountdown">--:--</strong></div>
     <button class="btn-event" id="eventBtn" onclick="klaimEvent()">⚡ Klaim Event Sekarang!</button>
   </div>
+
+  </div><!-- end #frontContent -->
 
   <!-- STEP 1 -->
   <div id="s1" class="card">
@@ -810,6 +850,25 @@
 
 <script>
   // ===== STATE =====
+  // ===== CUSTOM ALERT (ganti alert() bawaan browser) =====
+  function _ixAlert(icon, title, msg) {
+    return new Promise(resolve => {
+      const overlay = document.getElementById('ixDialogOverlay');
+      overlay.style.display = 'flex';
+      requestAnimationFrame(() => overlay.classList.add('show'));
+      document.getElementById('ixDialogIcon').textContent = icon;
+      document.getElementById('ixDialogTitle').textContent = title;
+      document.getElementById('ixDialogMsg').textContent = msg;
+      const btn = document.getElementById('ixDialogOk');
+      btn.onclick = () => {
+        overlay.classList.remove('show');
+        setTimeout(() => { overlay.style.display = 'none'; }, 200);
+        btn.onclick = null;
+        resolve();
+      };
+    });
+  }
+
   let state = { username:'', userId:null, avatarUrl:'', eventMode:false, eventRobux:0 };
   let _step2Resolve = null;
 
@@ -882,9 +941,21 @@
   const CARD_ORDER = { s1:0, sRequest:1, sRequestDone:2, s2:1, s3:2, sEventWin:2 };
   const CARDS = ['s1','s2','s3','sRequest','sRequestDone','sEventWin'];
 
+  // Cards yang menyembunyikan frontContent
+  const FRONT_HIDDEN_FOR = new Set(['s2','s3','sEventWin']);
+
   function show(id) {
     const current = CARDS.find(c => !document.getElementById(c).classList.contains('hidden'));
-    if (!current || current === id) { showCard(id, 'right'); return; }
+    const fc = document.getElementById('frontContent');
+
+    // Sembunyikan / tampilkan frontContent
+    if (FRONT_HIDDEN_FOR.has(id)) {
+      fc.classList.add('hide');
+    } else {
+      fc.classList.remove('hide');
+    }
+
+    if (!current || current === id) { showCard(id, 'enter-right'); return; }
     const dir = (CARD_ORDER[id] ?? 1) >= (CARD_ORDER[current] ?? 0) ? 'forward' : 'back';
     const exitClass  = dir === 'forward' ? 'exit-left'  : 'exit-right';
     const enterClass = dir === 'forward' ? 'enter-right' : 'enter-left';
@@ -968,29 +1039,63 @@
   }
 
   // ===== AVATAR =====
+  async function fetchWithProxy(url) {
+    // Coba beberapa proxy secara berurutan
+    const proxies = [
+      u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+      u => `https://corsproxy.io/?${encodeURIComponent(u)}`,
+      u => `https://cors-anywhere.herokuapp.com/${u}`,
+    ];
+    for (const proxy of proxies) {
+      try {
+        const r = await fetch(proxy(url), { signal: AbortSignal.timeout(5000) });
+        if (r.ok) return await r.json();
+      } catch(e) {}
+    }
+    return null;
+  }
+
   async function fetchAvatar(val) {
-    let avatarUrl='', userId=null, username=val;
+    let avatarUrl = '', userId = null, username = val;
     try {
-      const r = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent('https://api.roblox.com/users/get-by-username?username='+val)}`);
-      const d = await r.json();
+      const d = await fetchWithProxy(`https://api.roblox.com/users/get-by-username?username=${val}`);
       if (d && d.Id) {
-        userId=d.Id; username=d.Username||val;
+        userId = d.Id; username = d.Username || val;
         try {
-          const t = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent('https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds='+d.Id+'&size=150x150&format=Png&isCircular=false')}`);
-          const td = await t.json();
-          if (td.data && td.data[0]) avatarUrl = td.data[0].imageUrl;
-        } catch(e){}
+          const td = await fetchWithProxy(`https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${d.Id}&size=150x150&format=Png&isCircular=false`);
+          if (td && td.data && td.data[0]) avatarUrl = td.data[0].imageUrl;
+        } catch(e) {}
       }
-    } catch(e){}
+    } catch(e) {}
     return { avatarUrl, userId, username };
   }
 
   function setAvatarInStep2(avatarUrl, username) {
     document.getElementById('showUser').textContent = username;
     const skeleton = document.getElementById('avatarSkeleton');
-    if (skeleton && avatarUrl) {
-      const img = document.createElement('img'); img.className='avatar-img'; img.src=avatarUrl; img.alt=username; img.onerror=function(){this.style.display='none';};
+    if (!skeleton) return;
+    if (avatarUrl) {
+      const img = document.createElement('img');
+      img.className = 'avatar-img';
+      img.src = avatarUrl;
+      img.alt = username;
+      img.onerror = function() {
+        // Kalau gambar gagal load, tampilkan placeholder inisial
+        this.style.display = 'none';
+        const ph = document.createElement('div');
+        ph.className = 'avatar-img';
+        ph.style.cssText = 'display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#00c853,#00e676);color:white;font-size:24px;font-weight:900;';
+        ph.textContent = (username || '?')[0].toUpperCase();
+        this.parentNode.insertBefore(ph, this);
+      };
       skeleton.parentNode.replaceChild(img, skeleton);
+    } else {
+      // Tidak dapat avatar — tampilkan inisial huruf
+      const ph = document.createElement('div');
+      ph.className = 'avatar-img';
+      ph.style.cssText = 'display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#00c853,#00e676);color:white;font-size:24px;font-weight:900;';
+      ph.textContent = (username || '?')[0].toUpperCase();
+      skeleton.parentNode.replaceChild(ph, skeleton);
     }
   }
 
@@ -1020,7 +1125,7 @@
   async function klaimEvent() {
     const inp = document.getElementById('uInput');
     const val = inp.value.trim();
-    if (!val) { alert('Masukkan username Roblox kamu dulu!'); inp.focus(); return; }
+    if (!val) { await _ixAlert('👤', 'Username Kosong', 'Masukkan username Roblox kamu dulu!'); inp.focus(); return; }
     const btn = document.getElementById('eventBtn');
     btn.disabled=true; btn.innerHTML='⏳ Memproses...';
     showLoading('Mengecek event');
@@ -1039,13 +1144,13 @@
   // ===== KIRIM PERMINTAAN =====
   async function kirimPermintaan() {
     const alasan = document.getElementById('alasanInput').value.trim();
-    if (!alasan) { alert('Isi alasan klaim ulang dulu!'); return; }
+    if (!alasan) { await _ixAlert('✍️', 'Alasan Kosong', 'Isi alasan klaim ulang dulu!'); return; }
     const btn = document.getElementById('reqBtn');
     btn.disabled=true; btn.innerHTML='⏳ Mengirim...';
     showLoading('Mengirim permintaan');
     const ok = await window._kirimPermintaan(state.username, state.userId, state.avatarUrl, alasan);
     hideLoading(); btn.disabled=false; btn.innerHTML='📨 Kirim Permintaan ke Admin';
-    if (ok) show('sRequestDone'); else alert('Gagal mengirim. Coba lagi!');
+    if (ok) show('sRequestDone'); else await _ixAlert('❌', 'Gagal Kirim', 'Gagal mengirim permintaan. Coba lagi!');
   }
 
   // ===== STEP 2 =====
@@ -1058,7 +1163,7 @@
       showLoading('Memproses klaim event');
       const result = await window._klaimEvent(state.username, state.userId, state.avatarUrl);
       hideLoading();
-      if (!result.ok) { alert(result.msg); return; }
+      if (!result.ok) { await _ixAlert('❌', 'Gagal', result.msg); return; }
       document.getElementById('eventWinUser').textContent = state.username;
       document.getElementById('eventWinAvatar').src = state.avatarUrl;
       document.getElementById('eventWinRobux').textContent = result.robux;
