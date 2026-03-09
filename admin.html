@@ -616,7 +616,7 @@ window._simpanPengumuman = async (aktif) => {
   try {
     await setDoc(doc(db, "config", "pengumuman"), { pesan: pesan || '', aktif }, { merge: true });
     statusEl.style.color = 'var(--primary)';
-    statusEl.textContent = aktif ? '<i class="fa-solid fa-circle-check ic-green"></i> Pengumuman ditampilkan!' : '<i class="fa-solid fa-eye-slash ic-slate"></i> Pengumuman disembunyikan!';
+    statusEl.innerHTML = aktif ? '<i class="fa-solid fa-circle-check ic-green"></i> Pengumuman ditampilkan!' : '<i class="fa-solid fa-eye-slash ic-slate"></i> Pengumuman disembunyikan!';
   } catch(e) {
     statusEl.style.color = '#ff4757';
     statusEl.textContent = 'Gagal menyimpan: ' + e.message;
@@ -679,7 +679,7 @@ window._simpanToggleEmailJS = async () => {
 };
 
 function updateToggleLabel(aktif) {
-  document.getElementById('toggleEmailJSLabel').textContent = aktif ? '<i class="fa-solid fa-circle-check ic-green"></i> Aktif — notifikasi akan dikirim' : '<i class="fa-solid fa-ban ic-red"></i> Nonaktif — hemat request';
+  document.getElementById('toggleEmailJSLabel').innerHTML = aktif ? '<i class="fa-solid fa-circle-check ic-green"></i> Aktif — notifikasi akan dikirim' : '<i class="fa-solid fa-ban ic-red"></i> Nonaktif — hemat request';
   document.getElementById('toggleEmailJSLabel').style.color = aktif ? 'var(--primary)' : 'var(--muted)';
 }
 
