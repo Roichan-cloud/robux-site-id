@@ -6,6 +6,7 @@
 <title>Admin Dashboard — Robux Gratis</title>
 <link rel="icon" type="image/png" href="robux.png">
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
 <script type="module">
@@ -23,6 +24,34 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+
+// ===== CUSTOM DIALOG (ganti alert/confirm) =====
+function _dialog({ icon='', title='', msg='', okText='Oke', cancelText='Batal', danger=false, showCancel=false }) {
+  return new Promise(resolve => {
+    const overlay = document.getElementById('customDialogOverlay');
+    overlay.style.display = 'flex';
+    requestAnimationFrame(() => overlay.classList.add('show'));
+    document.getElementById('customDialogIcon').textContent = icon;
+    document.getElementById('customDialogTitle').textContent = title;
+    document.getElementById('customDialogMsg').textContent = msg;
+    const okBtn = document.getElementById('customDialogOk');
+    const cancelBtn = document.getElementById('customDialogCancel');
+    okBtn.textContent = okText;
+    okBtn.className = danger ? 'danger' : '';
+    cancelBtn.textContent = cancelText;
+    cancelBtn.style.display = showCancel ? '' : 'none';
+    const close = (result) => {
+      overlay.classList.remove('show');
+      setTimeout(() => { overlay.style.display = 'none'; }, 200);
+      okBtn.onclick = null; cancelBtn.onclick = null;
+      resolve(result);
+    };
+    okBtn.onclick = () => close(true);
+    cancelBtn.onclick = () => close(false);
+  });
+}
+function _alert(icon, title, msg) { return _dialog({ icon, title, msg }); }
+function _confirm(icon, title, msg, okText='Ya', danger=false) { return _dialog({ icon, title, msg, okText, showCancel:true, danger }); }
 
 // ===== STATE =====
 let allKlaims = [];
@@ -188,7 +217,8 @@ window._setCounter = async () => {
   const input = document.getElementById('counterInput');
   const num = parseInt(input.value);
   if (isNaN(num) || num < 0) { input.style.borderColor = '#ff4757'; setTimeout(() => input.style.borderColor = '#c8c0ff', 1500); return; }
-  if (!confirm(`Set counter ke ${num}?`)) return;
+  const ok = await _confirm('🔢', 'Set Counter', `Set counter ke ${num}?`, 'Ya, Set');
+  if (!ok) return;
   await setDoc(doc(db, "config", "stats"), { totalKlaim: num }, { merge: true });
   document.getElementById('statCounter').textContent = num;
   input.style.borderColor = '#00c853';
@@ -234,13 +264,13 @@ function renderKlaimTable(page) {
             <img src="${d.avatarUrl||''}" onerror="this.style.display='none'" style="width:38px;height:38px;border-radius:10px;border:2px solid var(--border);object-fit:cover;" />
             <div>
               <div style="font-weight:800;font-size:14px;">${d.username||'—'}</div>
-              <button class="btn-copy" onclick="window._copyUsername('${d.username||''}', this)" title="Salin username">📋 Salin</button>
+              <button class="btn-copy" onclick="window._copyUsername('${d.username||''}', this)" title="Salin username"><i class="fa-solid fa-copy ic-sky"></i> Salin</button>
             </div>
           </div>
         </td>
         <td style="font-size:12px;color:var(--muted);font-weight:700;">${d.tanggal||'—'}</td>
-        <td><span class="badge-green">✅ Klaim</span></td>
-        <td><button class="btn-del" onclick="window._deleteKlaim('${d.id}')">🗑️</button></td>
+        <td><span class="badge-green"><i class="fa-solid fa-circle-check"></i> Klaim</span></td>
+        <td><button class="btn-del" onclick="window._deleteKlaim('${d.id}')"><i class="fa-solid fa-trash ic-red"></i></button></td>
       </tr>`).join('');
   }
 
@@ -249,7 +279,8 @@ function renderKlaimTable(page) {
 }
 
 window._deleteKlaim = async (id) => {
-  if (!confirm("Hapus data ini?")) return;
+  const ok = await _confirm('🗑️', 'Hapus Data', 'Hapus data klaim ini?', 'Ya, Hapus', true);
+  if (!ok) return;
   await deleteDoc(doc(db, "klaim", id));
 };
 
@@ -257,7 +288,7 @@ window._copyUsername = (username, btn) => {
   if (!username) return;
   navigator.clipboard.writeText(username).then(() => {
     const orig = btn.innerHTML;
-    btn.innerHTML = '✅ Disalin!';
+    btn.innerHTML = '<i class="fa-solid fa-circle-check ic-green"></i> Disalin!';
     btn.style.color = 'var(--primary)';
     setTimeout(() => { btn.innerHTML = orig; btn.style.color = ''; }, 1500);
   }).catch(() => {
@@ -265,8 +296,8 @@ window._copyUsername = (username, btn) => {
     const el = document.createElement('textarea');
     el.value = username; document.body.appendChild(el); el.select();
     document.execCommand('copy'); document.body.removeChild(el);
-    btn.innerHTML = '✅ Disalin!';
-    setTimeout(() => btn.innerHTML = '📋 Salin', 1500);
+    btn.innerHTML = '<i class="fa-solid fa-circle-check ic-green"></i> Disalin!';
+    setTimeout(() => btn.innerHTML = '<i class="fa-solid fa-copy ic-sky"></i> Salin', 1500);
   });
 };
 
@@ -343,38 +374,37 @@ function renderChart() {
 // ===== BULK DELETE =====
 window._hapusSemuaKlaim = async () => {
   const total = allKlaims.length;
-  if (total === 0) { alert('Tidak ada data klaim.'); return; }
-  if (!confirm(`⚠️ Hapus SEMUA ${total} data klaim?\n\nPerhatian: Counter "Total orang yang sudah klaim" di halaman utama TIDAK terpengaruh karena menggunakan dokumen terpisah.`)) return;
+  if (total === 0) { await _alert('📭', 'Kosong', 'Tidak ada data klaim untuk dihapus.'); return; }
+  const ok = await _confirm('⚠️', `Hapus Semua ${total} Data?`, 'Counter "Total orang yang sudah klaim" di halaman utama TIDAK terpengaruh karena menggunakan dokumen terpisah.', 'Ya, Hapus Semua', true);
+  if (!ok) return;
   const btn = event.target;
   btn.disabled = true; btn.textContent = '⏳ Menghapus...';
   try {
-    // Firestore batch max 500, loop per 500
-    let count = 0;
     const snap = await getDocs(collection(db, "klaim"));
     const dels = [];
     snap.forEach(d => dels.push(deleteDoc(doc(db, "klaim", d.id))));
     await Promise.all(dels);
-    count = dels.length;
-    alert(`✅ ${count} data klaim berhasil dihapus!`);
+    await _alert('✅', 'Berhasil', `${dels.length} data klaim berhasil dihapus!`);
     allKlaims = [];
     klaimPage = 1;
     renderKlaimTable(1);
     loadStats();
-  } catch(e) { alert('Gagal: ' + e.message); }
-  btn.disabled = false; btn.textContent = '🗑️ Hapus Semua';
+  } catch(e) { await _alert('❌', 'Gagal', e.message); }
+  btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-trash ic-red"></i> Hapus Semua';
 };
 
 window._hapusSemuaDiproses = async () => {
   const diproses = allReqs.filter(r => r.status === 'approved' || r.status === 'rejected');
-  if (diproses.length === 0) { alert('Tidak ada permintaan yang sudah diproses.'); return; }
-  if (!confirm(`🗑️ Hapus ${diproses.length} permintaan yang sudah disetujui/ditolak?`)) return;
+  if (diproses.length === 0) { await _alert('📭', 'Kosong', 'Tidak ada permintaan yang sudah diproses.'); return; }
+  const ok = await _confirm('🗑️', 'Hapus Permintaan Diproses', `Hapus ${diproses.length} permintaan yang sudah disetujui/ditolak?`, 'Ya, Hapus', true);
+  if (!ok) return;
   const btn = event.target;
   btn.disabled = true; btn.textContent = '⏳ Menghapus...';
   try {
     await Promise.all(diproses.map(r => deleteDoc(doc(db, "permintaan", r.id))));
-    alert(`✅ ${diproses.length} permintaan diproses berhasil dihapus!`);
-  } catch(e) { alert('Gagal: ' + e.message); }
-  btn.disabled = false; btn.textContent = '🗑️ Hapus Diproses';
+    await _alert('✅', 'Berhasil', `${diproses.length} permintaan berhasil dihapus!`);
+  } catch(e) { await _alert('❌', 'Gagal', e.message); }
+  btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-trash-can ic-red"></i> Hapus Diproses';
 };
 
 // ===== REQ TABLE =====
@@ -407,8 +437,8 @@ function renderReqTable() {
       <td>
         ${d.status==='pending'?`
           <div style="display:flex;gap:6px;">
-            <button class="btn-approve" onclick="window._approveReq('${d.id}','${d.username}')">✅</button>
-            <button class="btn-reject" onclick="window._rejectReq('${d.id}','${d.username}')">❌</button>
+            <button class="btn-approve" onclick="window._approveReq('${d.id}','${d.username}')"><i class="fa-solid fa-circle-check ic-green"></i></button>
+            <button class="btn-reject" onclick="window._rejectReq('${d.id}','${d.username}')"><i class="fa-solid fa-circle-xmark ic-red"></i></button>
           </div>` : `<span style="font-size:11px;color:var(--muted)">—</span>`}
       </td>
     </tr>`).join('');
@@ -416,8 +446,8 @@ function renderReqTable() {
 
 function statusBadge(status) {
   if (status === 'pending') return `<span class="badge-orange">⏳ Pending</span>`;
-  if (status === 'approved') return `<span class="badge-green">✅ Setuju</span>`;
-  return `<span class="badge-red">❌ Ditolak</span>`;
+  if (status === 'approved') return `<span class="badge-green"><i class="fa-solid fa-circle-check ic-green"></i> Setuju</span>`;
+  return `<span class="badge-red"><i class="fa-solid fa-circle-xmark"></i> Ditolak</span>`;
 }
 
 // ===== MODAL ALASAN =====
@@ -425,12 +455,12 @@ let _modalAlasanCallback = null;
 
 window._bukaMoalAlasan = (type, id, username) => {
   const isApprove = type === 'approve';
-  document.getElementById('modalAlasanTitle').textContent = isApprove ? '✅ Setujui Permintaan' : '❌ Tolak Permintaan';
+  document.getElementById('modalAlasanTitle').innerHTML = isApprove ? '<i class="fa-solid fa-circle-check ic-green"></i> Setujui Permintaan' : '<i class="fa-solid fa-circle-xmark ic-red"></i> Tolak Permintaan';
   document.getElementById('modalAlasanSub').textContent = isApprove
     ? `Tulis alasan persetujuan untuk ${username}`
     : `Tulis alasan penolakan untuk ${username}`;
   const confirmBtn = document.getElementById('modalAlasanConfirm');
-  confirmBtn.textContent = isApprove ? '✅ Setujui' : '❌ Tolak';
+  confirmBtn.innerHTML = isApprove ? '<i class="fa-solid fa-circle-check ic-green"></i> Setujui' : '<i class="fa-solid fa-circle-xmark ic-red"></i> Tolak';
   confirmBtn.style.background = isApprove ? 'linear-gradient(135deg,#00c853,#00e676)' : 'linear-gradient(135deg,#ff4757,#ff6b35)';
   confirmBtn.style.color = 'white';
   document.getElementById('modalAlasanText').value = '';
@@ -445,33 +475,25 @@ window._tutupModalAlasan = () => {
 
 window._submitAlasan = async () => {
   const alasan = document.getElementById('modalAlasanText').value.trim();
-  if (!alasan) {
-    document.getElementById('modalAlasanText').style.borderColor = '#ff4757';
-    document.getElementById('modalAlasanText').placeholder = '⚠️ Alasan wajib diisi!';
-    setTimeout(() => {
-      document.getElementById('modalAlasanText').style.borderColor = '';
-      document.getElementById('modalAlasanText').placeholder = 'Tulis alasan...';
-    }, 2000);
-    return;
-  }
   const { type, id, username } = _modalAlasanCallback;
   const confirmBtn = document.getElementById('modalAlasanConfirm');
   confirmBtn.disabled = true; confirmBtn.textContent = '⏳ Menyimpan...';
   try {
+    const updateData = {
+      diprosesPada: new Date().toLocaleString('id-ID'),
+      ...(alasan ? { alasanAdmin: alasan } : {})
+    };
     if (type === 'approve') {
-      await updateDoc(doc(db, "permintaan", id), { status: 'approved', alasanAdmin: alasan, diprosesPada: new Date().toLocaleString('id-ID') });
-      // Hapus dari klaim agar bisa klaim ulang
+      await updateDoc(doc(db, "permintaan", id), { status: 'approved', ...updateData });
       const q = query(collection(db, "klaim"));
       const snap = await getDocs(q);
       snap.forEach(async d => {
         if (d.data().usernameLower === username.toLowerCase()) await deleteDoc(doc(db, "klaim", d.id));
       });
     } else {
-      await updateDoc(doc(db, "permintaan", id), { status: 'rejected', alasanAdmin: alasan, diprosesPada: new Date().toLocaleString('id-ID') });
+      await updateDoc(doc(db, "permintaan", id), { status: 'rejected', ...updateData });
     }
-  } catch(e) { alert('Gagal: ' + e.message); }
-  confirmBtn.disabled = false;
-  window._tutupModalAlasan();
+  } catch(e) { await _alert('❌', 'Gagal', e.message); }
 };
 
 window._approveReq = (id, username) => window._bukaMoalAlasan('approve', id, username);
@@ -483,7 +505,7 @@ window._loadEvent = async () => {
     const snap = await getDoc(doc(db, "config", "event"));
     if (snap.exists() && snap.data().active) {
       const d = snap.data();
-      document.getElementById('evStatus').innerHTML = `<span class="badge-green">🟢 Event Aktif — ${d.robux} Robux — Gamepass ${d.gamepassHarga} Robux — ${d.pesertaCount||0}/${d.maxPeserta} peserta</span>`;
+      document.getElementById('evStatus').innerHTML = `<span class="badge-green"><i class="fa-solid fa-circle ic-green"></i> Event Aktif — ${d.robux} Robux — Gamepass ${d.gamepassHarga} Robux — ${d.pesertaCount||0}/${d.maxPeserta} peserta</span>`;
       document.getElementById('btnAktifkan').classList.add('hidden');
       document.getElementById('btnMatikan').classList.remove('hidden');
       // Countdown
@@ -494,7 +516,7 @@ window._loadEvent = async () => {
         document.getElementById('evCountdownWrap').classList.add('hidden');
       }
     } else {
-      document.getElementById('evStatus').innerHTML = `<span class="badge-gray">⚫ Tidak Ada Event Aktif</span>`;
+      document.getElementById('evStatus').innerHTML = `<span class="badge-gray"><i class="fa-solid fa-circle ic-slate"></i> Tidak Ada Event Aktif</span>`;
       document.getElementById('btnAktifkan').classList.remove('hidden');
       document.getElementById('btnMatikan').classList.add('hidden');
       document.getElementById('evCountdownWrap').classList.add('hidden');
@@ -516,7 +538,7 @@ window._loadEvent = async () => {
               <div><div style="font-weight:800;font-size:14px;">${d.username||'—'}</div><div style="font-size:11px;color:var(--muted);">${d.tanggal||'—'}</div></div>
             </div>
           </td>
-          <td><span class="badge-orange">⚡ ${d.robux} Robux</span></td>
+          <td><span class="badge-orange"><i class="fa-solid fa-bolt ic-yellow"></i> ${d.robux} Robux</span></td>
           <td style="font-size:11px;color:var(--muted);">${d.eventId||'—'}</td>
         </tr>`).join('');
   } catch(e) {}
@@ -543,10 +565,10 @@ window._aktifkanEvent = async () => {
   const max = document.getElementById('evMax').value.trim();
   const deadlineVal = document.getElementById('evDeadline').value;
   if (!robux || !gamepass || !max || isNaN(robux) || isNaN(gamepass) || isNaN(max)) {
-    alert('Isi semua field dengan angka!'); return;
+    await _alert('⚠️', 'Field Kosong', 'Isi semua field Robux, Harga Gamepass, dan Max Peserta dengan angka!'); return;
   }
   if (deadlineVal && new Date(deadlineVal) <= new Date()) {
-    alert('⚠️ Tanggal berakhir harus di masa depan!'); return;
+    await _alert('⏰', 'Tanggal Tidak Valid', 'Tanggal berakhir harus di masa depan!'); return;
   }
   const eventId = 'event_' + Date.now();
   const data = {
@@ -559,12 +581,13 @@ window._aktifkanEvent = async () => {
   }
   await setDoc(doc(db, "config", "event"), data);
   const deadlineStr = deadlineVal ? ` · Berakhir: ${new Date(deadlineVal).toLocaleString('id-ID')}` : '';
-  alert(`✅ Event dadakan aktif!${deadlineStr}`);
+  await _alert('🔥', 'Event Aktif!', `Event dadakan berhasil diaktifkan!${deadlineStr}`);
   window._loadEvent();
 };
 
 window._matikanEvent = async () => {
-  if (!confirm('Matikan event sekarang?')) return;
+  const ok = await _confirm('⛔', 'Matikan Event', 'Matikan event dadakan sekarang?', 'Ya, Matikan', true);
+  if (!ok) return;
   await setDoc(doc(db, "config", "event"), { active: false }, { merge: true });
   window._loadEvent();
 };
@@ -593,7 +616,7 @@ window._simpanPengumuman = async (aktif) => {
   try {
     await setDoc(doc(db, "config", "pengumuman"), { pesan: pesan || '', aktif }, { merge: true });
     statusEl.style.color = 'var(--primary)';
-    statusEl.textContent = aktif ? `✅ Pengumuman ditampilkan!` : '✅ Pengumuman disembunyikan!';
+    statusEl.textContent = aktif ? '<i class="fa-solid fa-circle-check ic-green"></i> Pengumuman ditampilkan!' : '<i class="fa-solid fa-eye-slash ic-slate"></i> Pengumuman disembunyikan!';
   } catch(e) {
     statusEl.style.color = '#ff4757';
     statusEl.textContent = 'Gagal menyimpan: ' + e.message;
@@ -652,11 +675,11 @@ window._simpanToggleEmailJS = async () => {
   updateToggleLabel(aktif);
   try {
     await setDoc(doc(db, "config", "settings"), { emailjsAktif: aktif }, { merge: true });
-  } catch(e) { alert('Gagal menyimpan: ' + e.message); }
+  } catch(e) { await _alert('❌', 'Gagal Menyimpan', e.message); }
 };
 
 function updateToggleLabel(aktif) {
-  document.getElementById('toggleEmailJSLabel').textContent = aktif ? '✅ Aktif — notifikasi akan dikirim' : '⛔ Nonaktif — hemat request';
+  document.getElementById('toggleEmailJSLabel').textContent = aktif ? '<i class="fa-solid fa-circle-check ic-green"></i> Aktif — notifikasi akan dikirim' : '<i class="fa-solid fa-ban ic-red"></i> Nonaktif — hemat request';
   document.getElementById('toggleEmailJSLabel').style.color = aktif ? 'var(--primary)' : 'var(--muted)';
 }
 
@@ -684,6 +707,13 @@ window._switchTab = (tab) => {
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Nunito', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
   body::before { content: ''; position: fixed; inset: 0; background: radial-gradient(circle at 10% 10%, rgba(0,200,83,0.08) 0%, transparent 40%), radial-gradient(circle at 90% 5%, rgba(0,230,118,0.06) 0%, transparent 35%); pointer-events: none; z-index: 0; }
+
+  /* ===== COLORED ICONS ===== */
+  .ic-gold  { color:#FFD700; } .ic-cyan   { color:#00bcd4; } .ic-purple { color:#7c3aed; }
+  .ic-amber { color:#f59e0b; } .ic-blue   { color:#3b82f6; } .ic-orange { color:#f97316; }
+  .ic-yellow{ color:#eab308; } .ic-red    { color:#ef4444; } .ic-green  { color:#00c853; }
+  .ic-indigo{ color:#6366f1; } .ic-slate  { color:#64748b; } .ic-sky    { color:#0ea5e9; }
+  .ic-violet{ color:#8b5cf6; }
 
   /* ===== NOTIF ===== */
   #notifContainer { position: fixed; top: 16px; right: 16px; z-index: 9999; display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
@@ -806,6 +836,21 @@ window._switchTab = (tab) => {
   .btn-event-off { flex: 1; padding: 13px; background: #fff0f0; color: #ff4757; border: 1.5px solid #ffd0d0; border-radius: 12px; font-family: 'Nunito', sans-serif; font-size: 14px; font-weight: 800; cursor: pointer; }
   .btn-event-off:hover { background: #ffe0e0; }
 
+  /* ===== CUSTOM DIALOG (ganti alert/confirm) ===== */
+  #customDialogOverlay { position:fixed;inset:0;background:rgba(0,0,0,0.45);backdrop-filter:blur(5px);z-index:2000;display:flex;align-items:center;justify-content:center;padding:20px;opacity:0;transition:opacity .2s ease; }
+  #customDialogOverlay.show { opacity:1; }
+  #customDialogBox { background:var(--white);border-radius:24px;padding:28px 24px;max-width:360px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,0.18);transform:scale(.93);transition:transform .25s cubic-bezier(.34,1.3,.64,1); }
+  #customDialogOverlay.show #customDialogBox { transform:scale(1); }
+  #customDialogIcon { font-size:36px;margin-bottom:10px;text-align:center; }
+  #customDialogTitle { font-size:1.05rem;font-weight:900;color:var(--text);margin-bottom:6px;text-align:center; }
+  #customDialogMsg { font-size:13px;font-weight:600;color:var(--muted);text-align:center;line-height:1.6;margin-bottom:20px; }
+  #customDialogBtns { display:flex;gap:10px; }
+  #customDialogBtns button { flex:1;padding:12px;border-radius:12px;font-family:'Nunito',sans-serif;font-size:14px;font-weight:800;cursor:pointer;border:none;transition:transform .18s,opacity .2s; }
+  #customDialogBtns button:hover { transform:translateY(-2px); }
+  #customDialogOk { background:linear-gradient(135deg,var(--primary),#00e676);color:white; }
+  #customDialogOk.danger { background:linear-gradient(135deg,#ff4757,#ff6b81); }
+  #customDialogCancel { background:var(--bg);color:var(--muted);border:1.5px solid var(--border) !important; }
+
   /* ===== MODAL ALASAN ===== */
   .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(4px); z-index: 999; display: flex; align-items: center; justify-content: center; padding: 20px; animation: fadeIn .2s ease; }
   @keyframes fadeIn { from{opacity:0}to{opacity:1} }
@@ -829,12 +874,25 @@ window._switchTab = (tab) => {
 </head>
 <body>
 
+<!-- CUSTOM DIALOG (ganti alert/confirm) -->
+<div id="customDialogOverlay" style="display:none;">
+  <div id="customDialogBox">
+    <div id="customDialogIcon"></div>
+    <div id="customDialogTitle"></div>
+    <div id="customDialogMsg"></div>
+    <div id="customDialogBtns">
+      <button id="customDialogOk">Oke</button>
+      <button id="customDialogCancel" style="display:none;">Batal</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL ALASAN ADMIN -->
 <div id="modalAlasan" class="modal-overlay hidden">
   <div class="modal-alasan-box">
     <div class="modal-alasan-title" id="modalAlasanTitle">Setujui Permintaan</div>
     <div class="modal-alasan-sub" id="modalAlasanSub">Tulis alasan untuk user</div>
-    <textarea id="modalAlasanText" placeholder="Tulis alasan..."></textarea>
+    <textarea id="modalAlasanText" placeholder="Tulis alasan... (opsional)"></textarea>
     <div class="modal-alasan-btns">
       <button class="modal-btn-confirm" id="modalAlasanConfirm" onclick="window._submitAlasan()">Konfirmasi</button>
       <button class="modal-btn-cancel" onclick="window._tutupModalAlasan()">Batal</button>
@@ -848,7 +906,7 @@ window._switchTab = (tab) => {
 <!-- LOGIN -->
 <div id="loginPage" class="login-wrap">
   <div class="login-box">
-    <div class="login-icon">🔐</div>
+    <div class="login-icon"><i class="fa-solid fa-lock ic-slate"></i></div>
     <h1>Admin Dashboard</h1>
     <p>Masukkan password untuk masuk</p>
     <div class="pass-field">
@@ -878,13 +936,13 @@ window._switchTab = (tab) => {
 <div id="dashboard" class="hidden">
   <div class="topbar">
     <div class="topbar-brand">
-      <div class="topbar-logo">🎮</div>
+      <div class="topbar-logo"><i class="fa-solid fa-gamepad" style="color:white;"></i></div>
       <div>
         <div class="topbar-title">Robux Gratis — Admin</div>
         <div class="topbar-sub">Dashboard monitoring realtime</div>
       </div>
     </div>
-    <button class="btn-logout" onclick="window._logout()">🚪 Logout</button>
+    <button class="btn-logout" onclick="window._logout()"><i class="fa-solid fa-right-from-bracket ic-red"></i> Logout</button>
   </div>
 
   <div class="content">
@@ -893,31 +951,31 @@ window._switchTab = (tab) => {
     <div class="stats-grid">
       <div class="stat-card">
         <div class="stat-num" id="statTotal">—</div>
-        <div class="stat-lbl">Data Klaim</div>
+        <div class="stat-lbl"><i class="fa-solid fa-clipboard-list ic-sky"></i> Data Klaim</div>
       </div>
       <div class="stat-card">
         <div id="statCounter" class="stat-num" style="color:#6c5ce7;">—</div>
-        <div class="stat-lbl">Total Klaim (Counter)</div>
+        <div class="stat-lbl"><i class="fa-solid fa-hashtag ic-green"></i> Total Klaim (Counter)</div>
         <div style="display:flex;gap:6px;margin-top:8px;align-items:center;">
           <input id="counterInput" type="number" min="0"
             style="width:80px;padding:5px 8px;border:1.5px solid #c8c0ff;border-radius:8px;font-family:'Nunito',sans-serif;font-size:13px;font-weight:800;color:#6c5ce7;background:#f0f0ff;outline:none;text-align:center;"
             placeholder="0" onfocus="this.select()" />
-          <button onclick="window._setCounter()" style="padding:5px 10px;background:#6c5ce7;color:white;border:none;border-radius:8px;font-family:'Nunito',sans-serif;font-size:12px;font-weight:800;cursor:pointer;">Set</button>
+          <button onclick="window._setCounter()" style="padding:5px 10px;background:#6c5ce7;color:white;border:none;border-radius:8px;font-family:'Nunito',sans-serif;font-size:12px;font-weight:800;cursor:pointer;"><i class="fa-solid fa-check ic-green"></i> Set</button>
         </div>
       </div>
       <div class="stat-card">
         <div class="stat-num" id="statToday">—</div>
-        <div class="stat-lbl">Hari Ini</div>
+        <div class="stat-lbl"><i class="fa-regular fa-calendar ic-amber"></i> Hari Ini</div>
       </div>
       <div class="stat-card">
         <div class="stat-num orange" id="statPending">—</div>
-        <div class="stat-lbl">Pending</div>
+        <div class="stat-lbl"><i class="fa-regular fa-hourglass ic-orange"></i> Pending</div>
       </div>
     </div>
 
     <!-- CHART -->
     <div class="chart-card">
-      <div class="chart-title">📊 Grafik Klaim 7 Hari Terakhir</div>
+      <div class="chart-title"><i class="fa-solid fa-chart-bar ic-violet"></i> Grafik Klaim 7 Hari Terakhir</div>
       <div class="chart-wrap">
         <canvas id="chartKlaim"></canvas>
       </div>
@@ -925,15 +983,15 @@ window._switchTab = (tab) => {
 
     <!-- PENGUMUMAN ADMIN -->
     <div class="table-card" style="padding:20px;margin-bottom:16px;">
-      <div style="font-size:1rem;font-weight:900;color:var(--text);margin-bottom:14px;">📢 Pengumuman untuk User</div>
+      <div style="font-size:1rem;font-weight:900;color:var(--text);margin-bottom:14px;"><i class="fa-solid fa-bullhorn ic-orange"></i> Pengumuman untuk User</div>
       <div style="display:flex;gap:10px;align-items:flex-start;">
         <textarea id="pengumumanInput" placeholder="Tulis pesan pengumuman di sini... (kosongkan untuk sembunyikan)"
           style="flex:1;padding:12px 14px;background:var(--bg);border:2px solid var(--border);border-radius:12px;font-family:'Nunito',sans-serif;font-size:14px;font-weight:700;color:var(--text);outline:none;resize:none;height:80px;transition:border-color .2s;"></textarea>
         <div style="display:flex;flex-direction:column;gap:8px;">
           <button onclick="window._simpanPengumuman(true)"
-            style="padding:10px 16px;background:linear-gradient(135deg,#f9a825,#f57f17);color:white;border:none;border-radius:12px;font-family:'Nunito',sans-serif;font-size:13px;font-weight:800;cursor:pointer;white-space:nowrap;">📢 Tampilkan</button>
+            style="padding:10px 16px;background:linear-gradient(135deg,#f9a825,#f57f17);color:white;border:none;border-radius:12px;font-family:'Nunito',sans-serif;font-size:13px;font-weight:800;cursor:pointer;white-space:nowrap;"><i class="fa-solid fa-bullhorn ic-orange"></i> Tampilkan</button>
           <button onclick="window._simpanPengumuman(false)"
-            style="padding:10px 16px;background:var(--bg);color:var(--muted);border:1.5px solid var(--border);border-radius:12px;font-family:'Nunito',sans-serif;font-size:13px;font-weight:800;cursor:pointer;white-space:nowrap;">✕ Sembunyikan</button>
+            style="padding:10px 16px;background:var(--bg);color:var(--muted);border:1.5px solid var(--border);border-radius:12px;font-family:'Nunito',sans-serif;font-size:13px;font-weight:800;cursor:pointer;white-space:nowrap;"><i class="fa-solid fa-eye-slash ic-slate"></i> Sembunyikan</button>
         </div>
       </div>
       <div id="pengumumanStatus" style="font-size:12px;font-weight:700;margin-top:8px;"></div>
@@ -942,8 +1000,8 @@ window._switchTab = (tab) => {
     <!-- TOGGLE EMAILJS -->
     <div class="toggle-row">
       <div class="toggle-info">
-        <div class="toggle-label">📧 Kirim Notifikasi EmailJS</div>
-        <div class="toggle-desc" id="toggleEmailJSLabel" style="color:var(--primary);">✅ Aktif</div>
+        <div class="toggle-label"><i class="fa-solid fa-envelope ic-indigo"></i> Kirim Notifikasi EmailJS</div>
+        <div class="toggle-desc" id="toggleEmailJSLabel" style="color:var(--primary);"><i class="fa-solid fa-circle-check ic-green"></i> Aktif</div>
       </div>
       <label class="toggle-switch">
         <input type="checkbox" id="toggleEmailJS" onchange="window._simpanToggleEmailJS()" checked />
@@ -953,27 +1011,27 @@ window._switchTab = (tab) => {
 
     <!-- TABS -->
     <div class="tabs">
-      <button class="tab-btn active" id="tab-klaim" onclick="window._switchTab('klaim')">📋 Daftar Klaim</button>
+      <button class="tab-btn active" id="tab-klaim" onclick="window._switchTab('klaim')"><i class="fa-solid fa-clipboard-list ic-sky"></i> Daftar Klaim</button>
       <button class="tab-btn" id="tab-permintaan" onclick="window._switchTab('permintaan')">
-        📨 Permintaan
+        <i class="fa-solid fa-paper-plane ic-indigo"></i> Permintaan
         <span class="req-badge" id="reqBadge">0</span>
       </button>
-      <button class="tab-btn" id="tab-event" onclick="window._switchTab('event')">⚡ Event</button>
+      <button class="tab-btn" id="tab-event" onclick="window._switchTab('event')"><i class="fa-solid fa-bolt ic-yellow"></i> Event</button>
     </div>
 
     <!-- TAB KLAIM -->
     <div id="content-klaim" class="tab-content table-card">
       <div class="table-header">
-        <div class="table-title">📋 Daftar Username Klaim</div>
-        <button onclick="window._hapusSemuaKlaim()" style="padding:7px 14px;background:#fff0f0;color:#ff4757;border:1.5px solid #ffd0d0;border-radius:10px;font-family:'Nunito',sans-serif;font-size:12px;font-weight:800;cursor:pointer;">🗑️ Hapus Semua</button>
+        <div class="table-title"><i class="fa-solid fa-clipboard-list ic-sky"></i> Daftar Username Klaim</div>
+        <button onclick="window._hapusSemuaKlaim()" style="padding:7px 14px;background:#fff0f0;color:#ff4757;border:1.5px solid #ffd0d0;border-radius:10px;font-family:'Nunito',sans-serif;font-size:12px;font-weight:800;cursor:pointer;"><i class="fa-solid fa-trash ic-red"></i> Hapus Semua</button>
       </div>
       <!-- FILTER TANGGAL -->
       <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1.5px solid var(--border);flex-wrap:wrap;">
-        <span style="font-size:12px;font-weight:800;color:var(--muted);">🗓️ Filter:</span>
+        <span style="font-size:12px;font-weight:800;color:var(--muted);"><i class="fa-solid fa-calendar ic-amber"></i> Filter:</span>
         <input type="date" id="filterTanggal" onchange="window._applyFilterKlaim()"
           style="padding:7px 12px;border:1.5px solid var(--border);border-radius:10px;font-family:'Nunito',sans-serif;font-size:13px;font-weight:700;color:var(--text);background:var(--bg);outline:none;" />
         <button onclick="window._clearFilterKlaim()"
-          style="padding:7px 12px;background:var(--bg);color:var(--muted);border:1.5px solid var(--border);border-radius:10px;font-family:'Nunito',sans-serif;font-size:12px;font-weight:800;cursor:pointer;">✕ Reset</button>
+          style="padding:7px 12px;background:var(--bg);color:var(--muted);border:1.5px solid var(--border);border-radius:10px;font-family:'Nunito',sans-serif;font-size:12px;font-weight:800;cursor:pointer;"><i class="fa-solid fa-xmark ic-slate"></i> Reset</button>
         <span id="filterKlaimInfo" style="font-size:11px;color:var(--muted);font-weight:700;"></span>
       </div>
       <div id="loadingKlaim" class="loading">⏳ Memuat data...</div>
@@ -989,14 +1047,14 @@ window._switchTab = (tab) => {
     <!-- TAB PERMINTAAN -->
     <div id="content-permintaan" class="tab-content table-card hidden">
       <div class="table-header">
-        <div class="table-title">📨 Permintaan Klaim Ulang</div>
+        <div class="table-title"><i class="fa-solid fa-paper-plane ic-indigo"></i> Permintaan Klaim Ulang</div>
         <div style="display:flex;gap:8px;align-items:center;">
           <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:800;color:var(--muted);cursor:pointer;">
             <input type="checkbox" id="filterPending" onchange="window._applyFilterReq()"
               style="width:16px;height:16px;accent-color:var(--primary);cursor:pointer;" />
             Pending saja
           </label>
-          <button onclick="window._hapusSemuaDiproses()" style="padding:7px 14px;background:#fff0f0;color:#ff4757;border:1.5px solid #ffd0d0;border-radius:10px;font-family:'Nunito',sans-serif;font-size:12px;font-weight:800;cursor:pointer;">🗑️ Hapus Diproses</button>
+          <button onclick="window._hapusSemuaDiproses()" style="padding:7px 14px;background:#fff0f0;color:#ff4757;border:1.5px solid #ffd0d0;border-radius:10px;font-family:'Nunito',sans-serif;font-size:12px;font-weight:800;cursor:pointer;"><i class="fa-solid fa-trash-can ic-red"></i> Hapus Diproses</button>
         </div>
       </div>
       <div id="loadingReq" class="loading">⏳ Memuat data...</div>
@@ -1011,12 +1069,12 @@ window._switchTab = (tab) => {
     <!-- TAB EVENT -->
     <div id="content-event" class="tab-content hidden">
       <div class="event-card">
-        <div class="event-card-title">⚡ Kontrol Event Dadakan</div>
+        <div class="event-card-title"><i class="fa-solid fa-bolt ic-yellow"></i> Kontrol Event Dadakan</div>
         <div id="evStatus" style="margin-bottom:14px;"></div>
 
         <!-- Countdown aktif -->
         <div id="evCountdownWrap" class="hidden" style="margin-bottom:14px;">
-          <div class="ev-countdown-box">⏰ Berakhir dalam: <strong id="evCountdown">--:--</strong></div>
+          <div class="ev-countdown-box"><i class="fa-regular fa-clock ic-amber"></i> Berakhir dalam: <strong id="evCountdown">--:--</strong></div>
         </div>
 
         <div class="field-grid-3">
@@ -1041,15 +1099,15 @@ window._switchTab = (tab) => {
           </div>
         </div>
         <div style="display:flex;gap:10px;">
-          <button id="btnAktifkan" class="btn-event-on" onclick="window._aktifkanEvent()">🔥 Aktifkan Event</button>
-          <button id="btnMatikan" class="btn-event-off hidden" onclick="window._matikanEvent()">⛔ Matikan Event</button>
+          <button id="btnAktifkan" class="btn-event-on" onclick="window._aktifkanEvent()"><i class="fa-solid fa-fire ic-red"></i> Aktifkan Event</button>
+          <button id="btnMatikan" class="btn-event-off hidden" onclick="window._matikanEvent()"><i class="fa-solid fa-ban ic-red"></i> Matikan Event</button>
         </div>
       </div>
 
       <div class="table-card">
         <div class="table-header">
-          <div class="table-title">⚡ Peserta Event</div>
-          <button class="btn-refresh" onclick="window._loadEvent()">🔄 Refresh</button>
+          <div class="table-title"><i class="fa-solid fa-bolt ic-yellow"></i> Peserta Event</div>
+          <button class="btn-refresh" onclick="window._loadEvent()"><i class="fa-solid fa-rotate ic-slate"></i> Refresh</button>
         </div>
         <table>
           <thead><tr><th>Username</th><th>Robux</th><th>Event ID</th></tr></thead>
