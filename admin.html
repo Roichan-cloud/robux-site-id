@@ -108,6 +108,7 @@ function showDashboard() {
   startAutoEventWatcher();
   loadPengumuman();
   _listenMaintenance();
+  loadRLRequests();
 }
 
 window.addEventListener('load', () => {
@@ -678,6 +679,72 @@ function _listenMaintenance() {
   });
 }
 
+// ===== PERMINTAAN RATE LIMIT =====
+let allRLReqs = [];
+
+function loadRLRequests() {
+  const q = query(collection(db, "permintaan_rl"), orderBy("timestamp","desc"));
+  onSnapshot(q, (snap) => {
+    allRLReqs = [];
+    snap.forEach(d => allRLReqs.push({ id: d.id, ...d.data() }));
+    renderRLTable();
+    // Badge count
+    const pending = allRLReqs.filter(r => r.status === 'pending').length;
+    const badge = document.getElementById('rlBadge');
+    if (badge) { badge.textContent = pending; badge.style.display = pending > 0 ? 'inline-flex' : 'none'; }
+  });
+}
+
+function renderRLTable() {
+  const tbody = document.getElementById('rlTbody');
+  if (!tbody) return;
+  if (allRLReqs.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--muted);font-weight:700;">Belum ada permintaan</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = allRLReqs.map(r => {
+    const statusBadge = r.status === 'pending'
+      ? `<span style="background:#fff3cd;color:#856404;padding:3px 10px;border-radius:8px;font-size:11px;font-weight:800;"><i class="fa-solid fa-clock"></i> Pending</span>`
+      : r.status === 'approved'
+      ? `<span style="background:#d4edda;color:#155724;padding:3px 10px;border-radius:8px;font-size:11px;font-weight:800;"><i class="fa-solid fa-circle-check"></i> Disetujui</span>`
+      : `<span style="background:#f8d7da;color:#721c24;padding:3px 10px;border-radius:8px;font-size:11px;font-weight:800;"><i class="fa-solid fa-circle-xmark"></i> Ditolak</span>`;
+    return `<tr>
+      <td style="padding:10px 12px;font-weight:800;">${r.username||'-'}</td>
+      <td style="padding:10px 12px;font-size:12px;color:var(--muted);">${r.alasan||'-'}</td>
+      <td style="padding:10px 12px;font-size:11px;color:var(--muted);">${r.tanggal||'-'}</td>
+      <td style="padding:10px 12px;">${statusBadge}</td>
+      <td style="padding:10px 12px;">
+        ${r.status === 'pending' ? `
+          <button onclick="window._setujuRL('${r.id}')" style="padding:5px 10px;background:#00c853;color:white;border:none;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer;margin-right:4px;"><i class="fa-solid fa-circle-check"></i> Setuju</button>
+          <button onclick="window._tolakRL('${r.id}')" style="padding:5px 10px;background:#ef4444;color:white;border:none;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer;"><i class="fa-solid fa-circle-xmark"></i> Tolak</button>
+        ` : `<button onclick="window._hapusRL('${r.id}')" style="padding:5px 10px;background:var(--bg);color:var(--muted);border:1.5px solid var(--border);border-radius:8px;font-size:12px;font-weight:800;cursor:pointer;"><i class="fa-solid fa-trash ic-red"></i></button>`}
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+window._setujuRL = async (id) => {
+  const ok = await _confirm('✅', 'Setujui Permintaan?', 'Pengguna ini akan bisa submit kembali (rate limit direset).', 'Setujui', false);
+  if (!ok) return;
+  // Reset rate limit di sisi server tidak bisa langsung, tapi tandai approved
+  // Admin perlu beritahu user bahwa mereka bisa coba lagi (limit localStorage reset sendiri per jam)
+  await setDoc(doc(db, "permintaan_rl", id), { status: 'approved' }, { merge: true });
+  kirimBrowserNotif('✅ Permintaan Disetujui', 'Rate limit request telah disetujui');
+};
+
+window._tolakRL = async (id) => {
+  const ok = await _confirm('❌', 'Tolak Permintaan?', 'Permintaan ini akan ditandai ditolak.', 'Tolak', true);
+  if (!ok) return;
+  await setDoc(doc(db, "permintaan_rl", id), { status: 'rejected' }, { merge: true });
+};
+
+window._hapusRL = async (id) => {
+  const ok = await _confirm('🗑️', 'Hapus?', 'Hapus data permintaan ini?', 'Hapus', true);
+  if (!ok) return;
+  const { deleteDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+  await deleteDoc(doc(db, "permintaan_rl", id));
+};
+
 // ===== PENGUMUMAN ADMIN =====
 window._simpanPengumuman = async (aktif) => {
   const pesan = document.getElementById('pengumumanInput').value.trim();
@@ -759,7 +826,6 @@ window._switchTab = (tab) => {
   document.getElementById('tab-'+tab).classList.add('active');
   document.getElementById('content-'+tab).classList.remove('hidden');
   if (tab === 'event') {
-    // Set min ke waktu sekarang agar tidak bisa pilih masa lalu
     const now = new Date(Date.now() - new Date().getTimezoneOffset()*60000).toISOString().slice(0,16);
     document.getElementById('evDeadline').min = now;
   }
@@ -1122,6 +1188,10 @@ window._switchTab = (tab) => {
         <span class="req-badge" id="reqBadge">0</span>
       </button>
       <button class="tab-btn" id="tab-event" onclick="window._switchTab('event')"><i class="fa-solid fa-bolt ic-yellow"></i> Event</button>
+      <button class="tab-btn" id="tab-ratelimit" onclick="window._switchTab('ratelimit')" style="position:relative;">
+        <i class="fa-solid fa-rotate-right ic-red"></i> Request Reset Limit
+        <span id="rlBadge" style="display:none;position:absolute;top:-6px;right:-6px;background:#ef4444;color:white;font-size:10px;font-weight:900;min-width:18px;height:18px;border-radius:50%;align-items:center;justify-content:center;padding:0 4px;">0</span>
+      </button>
     </div>
 
     <!-- TAB KLAIM -->
@@ -1217,6 +1287,32 @@ window._switchTab = (tab) => {
         <table>
           <thead><tr><th>Username</th><th>Robux</th><th>Event ID</th></tr></thead>
           <tbody id="tbodyEvent"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TAB PERMINTAAN RATE LIMIT -->
+    <div id="content-ratelimit" class="tab-content hidden table-card">
+      <div class="table-header">
+        <div class="table-title"><i class="fa-solid fa-rotate-right ic-red"></i> Request Reset Limit</div>
+      </div>
+      <div style="padding:10px 16px 4px;font-size:12px;font-weight:700;color:var(--muted);">
+        User yang melebihi batas percobaan dan mengajukan request reset limit.
+      </div>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead>
+            <tr style="background:var(--bg);border-bottom:2px solid var(--border);">
+              <th style="padding:10px 12px;text-align:left;font-weight:900;color:var(--muted);">Username</th>
+              <th style="padding:10px 12px;text-align:left;font-weight:900;color:var(--muted);">Alasan</th>
+              <th style="padding:10px 12px;text-align:left;font-weight:900;color:var(--muted);">Tanggal</th>
+              <th style="padding:10px 12px;text-align:left;font-weight:900;color:var(--muted);">Status</th>
+              <th style="padding:10px 12px;text-align:left;font-weight:900;color:var(--muted);">Aksi</th>
+            </tr>
+          </thead>
+          <tbody id="rlTbody">
+            <tr><td colspan="5" style="text-align:center;padding:24px;color:var(--muted);font-weight:700;">Memuat...</td></tr>
+          </tbody>
         </table>
       </div>
     </div>
