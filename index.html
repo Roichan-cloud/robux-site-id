@@ -4,9 +4,27 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Robux Gratis</title>
+<link rel="icon" type="image/png" href="robux.png">
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
+<style>
+  /* ===== LOADING SCREEN ===== */
+  #loadingScreen {
+    position: fixed; inset: 0; background: linear-gradient(135deg, #f0fff6, #e8fff2);
+    z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 16px; transition: opacity .5s ease, transform .5s ease;
+  }
+  #loadingScreen.fade-out { opacity: 0; transform: scale(1.04); pointer-events: none; }
+  .ls-logo { width: 80px; height: 80px; object-fit: contain; animation: lsBounce 1s ease-in-out infinite alternate; }
+  @keyframes lsBounce { from{transform:translateY(0)} to{transform:translateY(-12px)} }
+  .ls-title { font-family: 'Nunito', sans-serif; font-size: 1.5rem; font-weight: 900; color: #1a2e1f; }
+  .ls-dots { display: flex; gap: 8px; }
+  .ls-dot { width: 10px; height: 10px; border-radius: 50%; background: #00c853; animation: lsDot 1.2s ease-in-out infinite; }
+  .ls-dot:nth-child(2) { animation-delay: .2s; }
+  .ls-dot:nth-child(3) { animation-delay: .4s; }
+  @keyframes lsDot { 0%,80%,100%{transform:scale(.6);opacity:.4} 40%{transform:scale(1);opacity:1} }
+</style>
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getFirestore, collection, addDoc, getDocs, getDoc, setDoc, query, where, orderBy, limit, serverTimestamp, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
@@ -24,63 +42,121 @@
   const db = getFirestore(app);
   window._db = db;
 
-  // ===== COUNTER dengan animasi =====
+  // ===== COUNTER FLIP (odometer style) =====
+  let _currentCounterVal = -1;
+
+  function renderCounterDigits(num) {
+    const str = num.toLocaleString('id-ID');
+    const container = document.getElementById('counterDigits');
+    if (!container) return;
+    const oldStr = container.dataset.val || '';
+    container.dataset.val = str;
+    let html = '';
+    for (let i = 0; i < str.length; i++) {
+      const ch = str[i];
+      const oldIdx = i - (str.length - oldStr.length);
+      const oldCh = oldIdx >= 0 ? oldStr[oldIdx] : '';
+      const changed = ch !== oldCh && /\d/.test(ch);
+      html += `<span class="counter-digit-wrap"><span class="counter-digit${changed?' flip-in':''}">${ch}</span></span>`;
+    }
+    container.innerHTML = html;
+  }
+
   window._loadCounter = async function() {
     try {
-      const snap = await getDocs(collection(db, "klaim"));
-      animateCounter('counterNum', snap.size);
+      const snap = await getDoc(doc(db, "config", "stats"));
+      const total = snap.exists() ? (snap.data().totalKlaim || 0) : 0;
+      renderCounterDigits(0);
+      setTimeout(() => animateCounterFlip(0, total), 500);
     } catch(e) {}
   };
 
-  function animateCounter(id, target) {
-    const el = document.getElementById(id);
-    if (!el) return;
-    const start = parseInt(el.textContent) || 0;
-    const diff = target - start;
-    if (diff === 0) { el.textContent = target; return; }
-    const duration = 800;
+  function animateCounterFlip(start, target) {
+    if (target === start) { _currentCounterVal = target; renderCounterDigits(target); return; }
+    const duration = Math.min(2000, 700 + Math.abs(target - start) * 5);
     const startTime = performance.now();
     function step(now) {
       const progress = Math.min((now - startTime) / duration, 1);
-      const ease = 1 - Math.pow(1 - progress, 3);
-      el.textContent = Math.round(start + diff * ease);
+      const ease = 1 - Math.pow(2, -10 * progress);
+      const cur = Math.round(start + (target - start) * ease);
+      renderCounterDigits(cur);
       if (progress < 1) requestAnimationFrame(step);
+      else { _currentCounterVal = target; renderCounterDigits(target); }
     }
     requestAnimationFrame(step);
   }
 
-  // ===== LEADERBOARD realtime =====
+  function listenCounter() {
+    onSnapshot(doc(db, "config", "stats"), (snap) => {
+      if (!snap.exists()) return;
+      const newVal = snap.data().totalKlaim || 0;
+      if (newVal !== _currentCounterVal) {
+        animateCounterFlip(_currentCounterVal < 0 ? newVal : _currentCounterVal, newVal);
+        _currentCounterVal = newVal;
+      }
+    });
+  }
+
+  // ===== LEADERBOARD animasi smooth =====
+  let _lbPrevUsernames = [];
+
   window._listenLeaderboard = function() {
     try {
       const q = query(collection(db, "klaim"), orderBy("timestamp", "desc"), limit(5));
       onSnapshot(q, (snap) => {
         const docs = [];
         snap.forEach(d => docs.push(d.data()));
-        renderLeaderboard(docs);
-        // Update counter juga
-        getDocs(collection(db, "klaim")).then(s => animateCounter('counterNum', s.size)).catch(()=>{});
+        renderLeaderboardAnimated(docs);
       });
     } catch(e) {}
   };
 
-  function renderLeaderboard(docs) {
+  function renderLeaderboardAnimated(docs) {
     const el = document.getElementById('leaderboardList');
     if (!el) return;
     if (docs.length === 0) {
       el.innerHTML = `<div style="text-align:center;color:var(--muted);font-size:13px;font-weight:700;padding:12px 0;">Jadilah yang pertama klaim! 🎉</div>`;
-      return;
+      _lbPrevUsernames = []; return;
     }
-    el.innerHTML = docs.map((d, i) => {
-      // Sensor username: tampilkan 2 huruf pertama + bintang
-      const name = d.username || '???';
-      const masked = name.slice(0, 2) + '***';
-      return `
-        <div class="lb-item">
+    const newUsernames = docs.map(d => (d.username||'').toLowerCase());
+    const isFirst = _lbPrevUsernames.length === 0;
+
+    const buildItems = (list, enterSet) => list.map((d, i) => {
+      const masked = (d.username||'???').slice(0,2) + '***';
+      const isNew = enterSet.has((d.username||'').toLowerCase());
+      return `<div class="lb-item${isNew?' lb-enter':''}" style="${isNew?`animation-delay:0ms`:''}">
+        <div class="lb-rank">${['🥇','🥈','🥉','4️⃣','5️⃣'][i]||'—'}</div>
+        <div class="lb-name">${masked}</div>
+        <div class="lb-badge">💎 ${d.robux||50} Rbx</div>
+      </div>`;
+    }).join('');
+
+    if (isFirst) {
+      // Render satu-satu dengan delay
+      el.innerHTML = docs.map((d, i) => {
+        const masked = (d.username||'???').slice(0,2) + '***';
+        return `<div class="lb-item lb-enter" style="animation-delay:${i*90}ms">
           <div class="lb-rank">${['🥇','🥈','🥉','4️⃣','5️⃣'][i]||'—'}</div>
           <div class="lb-name">${masked}</div>
-          <div class="lb-badge">💎 50 Rbx</div>
+          <div class="lb-badge">💎 ${d.robux||50} Rbx</div>
         </div>`;
-    }).join('');
+      }).join('');
+    } else {
+      const added = new Set(newUsernames.filter(u => !_lbPrevUsernames.includes(u)));
+      const removed = _lbPrevUsernames.filter(u => !newUsernames.includes(u));
+      if (added.size === 0 && removed.length === 0) { _lbPrevUsernames = newUsernames; return; }
+
+      // Exit item yang hilang
+      el.querySelectorAll('.lb-item').forEach(item => {
+        const nameEl = item.querySelector('.lb-name');
+        if (!nameEl) return;
+        const prefix = nameEl.textContent.slice(0,2).toLowerCase();
+        if (removed.some(u => u.startsWith(prefix))) item.classList.add('lb-exit');
+      });
+
+      setTimeout(() => { el.innerHTML = buildItems(docs, added); }, 360);
+    }
+    _lbPrevUsernames = newUsernames;
   }
 
   // ===== CEK STATUS PERMINTAAN =====
@@ -118,6 +194,11 @@
         tanggal: new Date().toLocaleString('id-ID'),
         status: 'claimed'
       });
+      // Increment counter terpisah agar tidak hilang saat data dihapus
+      const statsRef = doc(db, "config", "stats");
+      const statsSnap = await getDoc(statsRef);
+      const current = statsSnap.exists() ? (statsSnap.data().totalKlaim || 0) : 0;
+      await setDoc(statsRef, { totalKlaim: current + 1 }, { merge: true });
     } catch(e) {}
   };
 
@@ -153,6 +234,14 @@
     document.getElementById('eventRobux').dataset.gamepass = data.gamepassHarga || '';
     document.getElementById('eventSisa').textContent = Math.max(0, data.maxPeserta - (data.pesertaCount || 0));
     document.getElementById('eventMax').textContent = data.maxPeserta;
+    // Progress bar slot
+    const terisi = data.pesertaCount || 0;
+    const max = data.maxPeserta || 1;
+    const pct = Math.min(100, Math.round((terisi / max) * 100));
+    document.getElementById('eventProgressBar').style.width = pct + '%';
+    document.getElementById('eventProgressLabel').textContent = `${terisi} dari ${max} slot terisi (${pct}%)`;
+    // Update info harga di step 1
+    updateS1InfoHarga(data.gamepassHarga || 72, data.robux || 50);
     if (_eventCountdownTimer) clearInterval(_eventCountdownTimer);
     if (data.deadline) {
       const deadline = data.deadline.toDate ? data.deadline.toDate() : new Date(data.deadline);
@@ -174,6 +263,17 @@
     const b = document.getElementById('eventBanner');
     if (b) b.classList.add('hidden');
     if (_eventCountdownTimer) { clearInterval(_eventCountdownTimer); _eventCountdownTimer = null; }
+    // Kembalikan ke harga default
+    updateS1InfoHarga(72, 50);
+  }
+
+  function updateS1InfoHarga(harga, robux) {
+    const elHarga = document.getElementById('s1HargaGamepass');
+    const elRobux = document.getElementById('s1RobuxDapat');
+    const elNum = document.getElementById('s1RobuxNum');
+    if (elHarga) elHarga.textContent = harga;
+    if (elRobux) elRobux.textContent = robux;
+    if (elNum) elNum.textContent = robux;
   }
 
   window._klaimEvent = async function(username, userId, avatarUrl) {
@@ -194,6 +294,43 @@
   window.addEventListener('load', () => {
     window._listenLeaderboard();
     window._listenEvent();
+    listenCounter();
+
+    // ===== PENGUMUMAN ADMIN =====
+    onSnapshot(doc(db, "config", "pengumuman"), (snap) => {
+      const banner = document.getElementById('pengumumanBanner');
+      const text = document.getElementById('pengumumanText');
+      if (snap.exists() && snap.data().aktif && snap.data().pesan) {
+        text.textContent = snap.data().pesan;
+        banner.classList.remove('hidden');
+      } else {
+        banner.classList.add('hidden');
+      }
+    });
+
+    // ===== LOADING SCREEN =====
+    const ls = document.getElementById('loadingScreen');
+    // Tunggu counter & font siap, lalu fade out
+    setTimeout(() => {
+      ls.classList.add('fade-out');
+      setTimeout(() => { ls.style.display = 'none'; }, 500);
+      // Confetti pembuka — hanya sekali per sesi
+      if (!sessionStorage.getItem('confettiOpened')) {
+        sessionStorage.setItem('confettiOpened', '1');
+        setTimeout(() => {
+          confetti({ particleCount: 80, spread: 100, origin: { y: 0.3 }, colors: ['#00c853','#00e676','#b2f5d8','#ffffff','#ffeb3b'] });
+          setTimeout(() => confetti({ particleCount: 60, spread: 80, origin: { y: 0.4, x: 0.2 }, colors: ['#00c853','#69f0ae','#ffffff'] }), 300);
+          setTimeout(() => confetti({ particleCount: 60, spread: 80, origin: { y: 0.4, x: 0.8 }, colors: ['#00e676','#b2f5d8','#ffeb3b'] }), 500);
+        }, 200);
+      }
+    }, 1800);
+
+    // Scroll to top button
+    const scrollBtn = document.getElementById('scrollTopBtn');
+    window.addEventListener('scroll', () => {
+      if (window.scrollY > 300) scrollBtn.classList.add('visible');
+      else scrollBtn.classList.remove('visible');
+    }, { passive: true });
   });
 </script>
 <style>
@@ -209,6 +346,10 @@
   .bubble { position: fixed; border-radius: 50%; opacity: 0; animation: rise linear infinite; pointer-events: none; z-index: 0; }
   @keyframes rise { 0%{transform:translateY(110vh);opacity:0}10%{opacity:.18}90%{opacity:.18}100%{transform:translateY(-10vh);opacity:0} }
   .wrap { max-width: 520px; margin: 0 auto; padding: 0 16px 60px; position: relative; z-index: 1; }
+  /* ===== SCROLL TO TOP ===== */
+  #scrollTopBtn { position:fixed;bottom:24px;right:20px;width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#00c853,#00e676);color:white;border:none;font-size:20px;cursor:pointer;box-shadow:0 4px 16px rgba(0,200,83,0.4);display:flex;align-items:center;justify-content:center;opacity:0;transform:translateY(16px) scale(.8);transition:opacity .3s,transform .3s;pointer-events:none;z-index:999; }
+  #scrollTopBtn.visible { opacity:1;transform:translateY(0) scale(1);pointer-events:auto; }
+  #scrollTopBtn:active { transform:scale(.9); }
   header { text-align: center; padding: 44px 0 20px; }
   .logo-box { display:inline-flex;align-items:center;justify-content:center;width:76px;height:76px;margin-bottom:16px;animation:logoFloat 3s ease-in-out infinite; }
   @keyframes logoFloat { 0%,100%{transform:translateY(0) rotate(-3deg)}50%{transform:translateY(-8px) rotate(3deg)} }
@@ -218,7 +359,6 @@
   .counter-box { display:inline-flex;align-items:center;gap:8px;background:white;border:2px solid var(--border);border-radius:50px;padding:8px 18px;margin-top:14px;box-shadow:0 4px 14px rgba(0,200,83,0.12);font-size:13px;font-weight:800;color:var(--text); }
   .counter-dot { width:8px;height:8px;background:var(--primary);border-radius:50%;animation:pulse 1.5s ease-in-out infinite; }
   @keyframes pulse { 0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.5);opacity:.6} }
-  #counterNum { color:var(--primary);font-size:16px;font-weight:900; }
   .steps { display:flex;align-items:center;justify-content:center;margin:24px auto 0;max-width:360px; }
   .s-dot { width:36px;height:36px;border-radius:50%;background:var(--white);border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:var(--muted);flex-shrink:0;transition:all .4s; }
   .s-dot.active { background:var(--primary);border-color:var(--primary);color:white;box-shadow:0 4px 14px rgba(0,200,83,0.35); }
@@ -286,16 +426,31 @@
   .t-text a { color:var(--primary);font-weight:900; }
 
   /* ===== LEADERBOARD ===== */
-  .leaderboard-card { background:var(--white);border:1.5px solid var(--border);border-radius:20px;padding:20px;margin:16px 0;box-shadow:var(--shadow); }
+  .leaderboard-card { background:var(--white);border:1.5px solid var(--border);border-radius:20px;padding:20px;margin:16px 0;box-shadow:var(--shadow);overflow:hidden; }
   .lb-title { font-size:14px;font-weight:900;color:var(--text);margin-bottom:14px;display:flex;align-items:center;gap:7px; }
-  .lb-item { display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border); }
+  #leaderboardList { overflow:hidden; }
+  .lb-item { display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);transition:transform .4s cubic-bezier(.25,.8,.25,1),opacity .35s ease; }
   .lb-item:last-child { border-bottom:none; }
+  .lb-item.lb-enter { animation: lbIn .45s cubic-bezier(.25,.8,.25,1) both; }
+  .lb-item.lb-exit { animation: lbOut .35s ease-in both; }
+  @keyframes lbIn { from{opacity:0;transform:translateY(-36px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes lbOut { from{opacity:1;transform:translateY(0)} to{opacity:0;transform:translateY(36px)} }
   .lb-rank { font-size:18px;min-width:28px; }
   .lb-avatar { width:36px;height:36px;border-radius:10px;border:2px solid var(--border);object-fit:cover; }
   .lb-avatar-empty { width:36px;height:36px;border-radius:10px;background:var(--bg);border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:16px; }
   .lb-avatar-anon { width:36px;height:36px;border-radius:10px;background:var(--bg);border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0; }
   .lb-name { font-size:14px;font-weight:800;color:var(--text);flex:1; }
   .lb-badge { font-size:11px;font-weight:800;color:var(--primary);background:#e8fff2;border-radius:50px;padding:3px 9px; }
+
+  /* ===== COUNTER FLIP (odometer) ===== */
+  .counter-box { display:inline-flex;align-items:center;gap:8px;background:white;border:2px solid var(--border);border-radius:50px;padding:8px 18px;margin-top:14px;box-shadow:0 4px 14px rgba(0,200,83,0.12);font-size:13px;font-weight:800;color:var(--text); }
+  .counter-dot { width:8px;height:8px;background:var(--primary);border-radius:50%;animation:pulse 1.5s ease-in-out infinite; }
+  .counter-digits { display:inline-flex;align-items:center;overflow:hidden;height:1.2em;position:relative; }
+  .counter-digit-wrap { position:relative;overflow:hidden;height:1.2em;display:inline-block; }
+  .counter-digit { display:block;color:var(--primary);font-size:16px;font-weight:900;line-height:1.2em;transition:transform .45s cubic-bezier(.25,.8,.25,1); }
+  .counter-digit.flip-out { transform:translateY(100%); }
+  .counter-digit.flip-in { transform:translateY(-100%); animation:digitFlip .45s cubic-bezier(.25,.8,.25,1) forwards; }
+  @keyframes digitFlip { from{transform:translateY(-100%)} to{transform:translateY(0)} }
 
   /* ===== CEK STATUS ===== */
   .status-card { background:var(--white);border:1.5px solid var(--border);border-radius:20px;padding:20px;margin:16px 0;box-shadow:var(--shadow); }
@@ -419,6 +574,20 @@
   </div>
 </div>
 
+<!-- LOADING SCREEN -->
+<div id="loadingScreen">
+  <img src="robux.png" class="ls-logo" alt="Robux" />
+  <div class="ls-title">Robux Gratis</div>
+  <div class="ls-dots">
+    <div class="ls-dot"></div>
+    <div class="ls-dot"></div>
+    <div class="ls-dot"></div>
+  </div>
+</div>
+
+<!-- SCROLL TO TOP -->
+<button id="scrollTopBtn" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Ke atas">↑</button>
+
 <div class="wrap">
   <header>
     <div class="logo-box">
@@ -428,7 +597,7 @@
     <p>Dapatkan 50 Robux secara gratis</p>
     <div class="counter-box">
       <div class="counter-dot"></div>
-      <span><span id="counterNum">0</span> orang sudah klaim!</span>
+      <span><span id="counterDigits" class="counter-digits"></span> orang sudah klaim!</span>
     </div>
     <div class="steps" style="margin-top:20px;">
       <div class="s-dot active" id="d1">1</div>
@@ -452,7 +621,16 @@
     </div>
     <div class="ck-step" style="margin-bottom:0;">
       <div class="ck-icon">💎</div>
-      <div><div class="ck-title">3. Dapat Robux!</div><div class="ck-desc">Setiap pemain yang beli Gamepass → kamu otomatis dapat Robux. Masuk 1×24 jam!</div></div>
+      <div><div class="ck-title">3. Dapat Robux!</div><div class="ck-desc">Setiap pemain yang beli Gamepass → kamu otomatis dapat Robux. Masuk dalam 7-10 hari kerja!</div></div>
+    </div>
+  </div>
+
+  <!-- PENGUMUMAN ADMIN -->
+  <div id="pengumumanBanner" class="hidden" style="background:linear-gradient(135deg,#fff8e1,#fff3cd);border:2px solid #ffd54f;border-radius:18px;padding:16px 18px;margin-bottom:16px;display:flex;gap:12px;align-items:flex-start;">
+    <div style="font-size:24px;flex-shrink:0;">📢</div>
+    <div>
+      <div style="font-size:12px;font-weight:800;color:#8a6500;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Pengumuman Admin</div>
+      <div id="pengumumanText" style="font-size:14px;font-weight:700;color:#5a4000;line-height:1.5;"></div>
     </div>
   </div>
 
@@ -487,6 +665,11 @@
       <span style="font-size:1rem;font-weight:700;opacity:.8;"> Robux</span>
     </div>
     <div class="event-slot">Sisa slot: <strong><span id="eventSisa">?</span></strong> dari <span id="eventMax">?</span> orang</div>
+    <!-- PROGRESS BAR SLOT -->
+    <div style="background:rgba(255,255,255,0.25);border-radius:50px;height:8px;margin:8px 0 4px;overflow:hidden;">
+      <div id="eventProgressBar" style="height:100%;background:white;border-radius:50px;width:0%;transition:width .6s cubic-bezier(.25,.8,.25,1);"></div>
+    </div>
+    <div id="eventProgressLabel" style="font-size:11px;opacity:.8;font-weight:700;margin-bottom:6px;"></div>
     <div id="eventCountdownWrap" class="event-countdown hidden">⏰ Berakhir dalam: <strong id="eventCountdown">--:--</strong></div>
     <button class="btn-event" id="eventBtn" onclick="klaimEvent()">⚡ Klaim Event Sekarang!</button>
   </div>
@@ -499,7 +682,16 @@
     <div class="c-sub">Masukkan username Roblox kamu untuk mulai klaim</div>
     <div class="rbx-hero">
       <img src="robux.png" alt="Robux" style="width:56px;height:56px;object-fit:contain;animation:flip 4s ease-in-out infinite;flex-shrink:0;" />
-      <div><div class="rbx-num">50</div><div class="rbx-lbl">Robux Gratis</div></div>
+      <div><div class="rbx-num" id="s1RobuxNum">50</div><div class="rbx-lbl">Robux Gratis</div></div>
+    </div>
+    <!-- INFO HARGA GAMEPASS -->
+    <div id="s1InfoHarga" style="background:linear-gradient(135deg,#f0fff6,#e8fff2);border:2px solid #b2f5d0;border-radius:16px;padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px;">
+      <div style="font-size:28px;flex-shrink:0;">🎮</div>
+      <div>
+        <div style="font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px;">Yang Perlu Kamu Buat</div>
+        <div style="font-size:15px;font-weight:900;color:var(--text);">Gamepass seharga <span id="s1HargaGamepass" style="color:var(--primary);font-size:18px;">72</span> <span style="font-size:13px;font-weight:700;color:var(--muted);">Robux</span></div>
+        <div style="font-size:11px;font-weight:700;color:var(--muted);margin-top:2px;">Kamu akan dapat <span id="s1RobuxDapat" style="color:var(--primary);font-weight:900;">50</span> Robux setelah verified</div>
+      </div>
     </div>
     <div class="field">
       <label for="uInput">Username Roblox</label>
@@ -548,7 +740,7 @@
     <div class="event-win">
       <div style="font-size:12px;opacity:.8;margin-bottom:6px;font-weight:800;text-transform:uppercase;letter-spacing:1px;">Robux Event Sedang Dikirim</div>
       <div class="event-win-rbx">⚡ <span id="eventWinRobux">?</span></div>
-      <div style="font-size:13px;opacity:.8;margin-top:5px;font-weight:700;">Masuk dalam 1×24 jam</div>
+      <div style="font-size:13px;opacity:.8;margin-top:5px;font-weight:700;">Masuk dalam 7-10 hari kerja</div>
     </div>
     <button class="btn btn-wa" onclick="shareWA()">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
@@ -600,7 +792,7 @@
     <div class="win-amount">
       <div style="font-size:12px;color:var(--muted);margin-bottom:6px;font-weight:800;text-transform:uppercase;letter-spacing:1px;">Robux Sedang Dikirim</div>
       <div class="win-rbx">💎 50</div>
-      <div style="font-size:13px;color:var(--muted);margin-top:5px;font-weight:700;">Masuk dalam 1×24 jam</div>
+      <div style="font-size:13px;color:var(--muted);margin-top:5px;font-weight:700;">Masuk dalam 7-10 hari kerja</div>
     </div>
     <div class="alert a-ok"><span>💡</span><span>Setiap pemain yang beli Gamepass di game kamu → kamu dapat Robux!</span></div>
     <button class="btn btn-wa" onclick="shareWA()">
