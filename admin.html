@@ -107,6 +107,7 @@ function showDashboard() {
   window._loadToggleEmailJS();
   startAutoEventWatcher();
   loadPengumuman();
+  _listenMaintenance();
 }
 
 window.addEventListener('load', () => {
@@ -189,12 +190,32 @@ function pushNotif(title, msg, type) {
 // ===== NOTIFIKASI BROWSER =====
 function mintaBrowserNotif() {
   if (!('Notification' in window)) return;
-  if (Notification.permission === 'default') Notification.requestPermission();
+  if (Notification.permission === 'default') {
+    Notification.requestPermission().then(p => {
+      console.log('Notif permission:', p);
+    });
+  }
 }
 
-function kirimBrowserNotif(title, body) {
+async function kirimBrowserNotif(title, body) {
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
-  try { new Notification(title, { body, icon: 'roblox.png' }); } catch(e) {}
+  try {
+    // Coba via ServiceWorker (lebih reliable di background)
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg) {
+        reg.showNotification(title, { body, icon: 'robux.png', badge: 'robux.png' });
+        return;
+      }
+    }
+    // Fallback: Notification API biasa
+    new Notification(title, { body, icon: 'robux.png' });
+  } catch(e) {
+    // Fallback terakhir: update title tab
+    const orig = document.title;
+    document.title = `🔔 ${title}`;
+    setTimeout(() => { document.title = orig; }, 4000);
+  }
 }
 
 // ===== STATS =====
@@ -611,6 +632,52 @@ window._clearFilterKlaim = () => {
 // ===== FILTER PERMINTAAN PENDING =====
 window._applyFilterReq = () => renderReqTable();
 
+// ===== MAINTENANCE =====
+window._aktifkanMaintenance = async () => {
+  const pesan = document.getElementById('maintenancePesanInput').value.trim();
+  if (!pesan) { await _alert('✍️', 'Pesan Kosong', 'Tulis pesan untuk user terlebih dahulu!'); return; }
+  const ok = await _confirm('⚠️', 'Aktifkan Kesalahan Teknis?', 'Semua user tidak bisa submit hingga kamu nonaktifkan. Lanjutkan?', 'Ya, Aktifkan', true);
+  if (!ok) return;
+  try {
+    await setDoc(doc(db, "config", "maintenance"), { aktif: true, pesan }, { merge: true });
+    document.getElementById('maintenanceSaveStatus').innerHTML = '<i class="fa-solid fa-circle-check ic-green"></i> Maintenance diaktifkan!';
+    document.getElementById('toggleMaintenance').checked = true;
+    setTimeout(() => { document.getElementById('maintenanceSaveStatus').innerHTML = ''; }, 3000);
+  } catch(e) { await _alert('❌', 'Gagal', e.message); }
+};
+
+window._nonaktifkanMaintenance = async () => {
+  try {
+    await setDoc(doc(db, "config", "maintenance"), { aktif: false }, { merge: true });
+    document.getElementById('maintenanceSaveStatus').innerHTML = '<i class="fa-solid fa-circle-check ic-green"></i> Maintenance dinonaktifkan!';
+    document.getElementById('toggleMaintenance').checked = false;
+    setTimeout(() => { document.getElementById('maintenanceSaveStatus').innerHTML = ''; }, 3000);
+  } catch(e) { await _alert('❌', 'Gagal', e.message); }
+};
+
+window._toggleMaintenance = async (checked) => {
+  if (checked) { await window._aktifkanMaintenance(); }
+  else { await window._nonaktifkanMaintenance(); }
+};
+
+function _listenMaintenance() {
+  onSnapshot(doc(db, "config", "maintenance"), (snap) => {
+    const aktif = snap.exists() && snap.data().aktif;
+    const pesan = snap.exists() ? (snap.data().pesan || '') : '';
+    const toggle = document.getElementById('toggleMaintenance');
+    const label = document.getElementById('maintenanceStatusLabel');
+    if (toggle) toggle.checked = aktif;
+    if (label) {
+      label.innerHTML = aktif
+        ? '<i class="fa-solid fa-triangle-exclamation ic-red"></i> <span style="color:#c0392b;font-weight:900;">AKTIF — user tidak bisa submit!</span>'
+        : '<i class="fa-solid fa-circle ic-slate"></i> Nonaktif — user dapat submit normal';
+    }
+    if (pesan && document.getElementById('maintenancePesanInput').value === '') {
+      document.getElementById('maintenancePesanInput').value = pesan;
+    }
+  });
+}
+
 // ===== PENGUMUMAN ADMIN =====
 window._simpanPengumuman = async (aktif) => {
   const pesan = document.getElementById('pengumumanInput').value.trim();
@@ -981,6 +1048,42 @@ window._switchTab = (tab) => {
       <div class="chart-wrap">
         <canvas id="chartKlaim"></canvas>
       </div>
+    </div>
+
+    <!-- MAINTENANCE / KESALAHAN TEKNIS -->
+    <div class="table-card" style="padding:20px;margin-bottom:16px;border:2px solid #ffd0d0;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+        <div style="width:36px;height:36px;background:linear-gradient(135deg,#ff4757,#c0392b);border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <i class="fa-solid fa-triangle-exclamation" style="color:white;font-size:16px;"></i>
+        </div>
+        <div>
+          <div style="font-size:1rem;font-weight:900;color:#c0392b;">Kesalahan Teknis</div>
+          <div style="font-size:11px;font-weight:600;color:var(--muted);">Aktifkan untuk mencegah semua submit dari user</div>
+        </div>
+        <div style="margin-left:auto;">
+          <label class="toggle-switch">
+            <input type="checkbox" id="toggleMaintenance" onchange="window._toggleMaintenance(this.checked)" />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+      <div id="maintenanceStatusLabel" style="font-size:12px;font-weight:800;color:var(--muted);margin-bottom:12px;">
+        <i class="fa-solid fa-circle ic-slate"></i> Nonaktif — user dapat submit normal
+      </div>
+      <textarea id="maintenancePesanInput" placeholder="Tulis pesan untuk user saat maintenance aktif... (wajib diisi)"
+        style="width:100%;padding:12px 14px;background:var(--bg);border:2px solid #ffd0d0;border-radius:12px;font-family:'Nunito',sans-serif;font-size:14px;font-weight:700;color:var(--text);outline:none;resize:none;height:80px;transition:border-color .2s;"
+        onfocus="this.style.borderColor='#ff4757'" onblur="this.style.borderColor='#ffd0d0'"></textarea>
+      <div style="display:flex;gap:8px;margin-top:10px;">
+        <button onclick="window._aktifkanMaintenance()"
+          style="flex:1;padding:10px;background:linear-gradient(135deg,#ff4757,#c0392b);color:white;border:none;border-radius:12px;font-family:'Nunito',sans-serif;font-size:13px;font-weight:800;cursor:pointer;">
+          <i class="fa-solid fa-triangle-exclamation"></i> Aktifkan Kesalahan Teknis
+        </button>
+        <button onclick="window._nonaktifkanMaintenance()"
+          style="flex:1;padding:10px;background:var(--bg);color:var(--muted);border:1.5px solid var(--border);border-radius:12px;font-family:'Nunito',sans-serif;font-size:13px;font-weight:800;cursor:pointer;">
+          <i class="fa-solid fa-circle-check ic-green"></i> Nonaktifkan
+        </button>
+      </div>
+      <div id="maintenanceSaveStatus" style="font-size:12px;font-weight:700;margin-top:8px;"></div>
     </div>
 
     <!-- PENGUMUMAN ADMIN -->
