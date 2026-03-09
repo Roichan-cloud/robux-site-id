@@ -677,6 +677,30 @@
   </div>
 </div>
 
+<!-- MODAL KONFIRMASI 3 — SOAL QUIZ -->
+<div id="modalKonfirmasi3" class="modal-overlay hidden">
+  <div class="modal-box">
+    <div class="modal-icon"><i class="fa-solid fa-circle-question ic-blue"></i></div>
+    <div class="modal-title">Verifikasi Terakhir</div>
+    <div class="modal-msg" id="modal3Soal">Berapa harga Gamepass yang harus kamu buat?</div>
+    <div style="background:var(--bg);border:2px solid var(--border);border-radius:14px;padding:14px;margin-bottom:16px;">
+      <div style="font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;"><i class="fa-solid fa-keyboard ic-blue"></i> Ketik jawabanmu</div>
+      <input type="number" id="modal3Input" placeholder="Contoh: 72"
+        style="width:100%;padding:12px 14px;background:white;border:2px solid var(--border);border-radius:10px;font-family:'Nunito',sans-serif;font-size:22px;font-weight:900;color:var(--text);text-align:center;outline:none;transition:border-color .2s;"
+        onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='var(--border)'"
+        onkeydown="if(event.key==='Enter')cekJawabanModal3()" oninput="resetModal3Error()" />
+      <div id="modal3Error" style="font-size:12px;font-weight:800;color:#ef4444;text-align:center;margin-top:8px;min-height:18px;display:none;">
+        <i class="fa-solid fa-circle-xmark"></i> Jawaban salah! Mohon ubah gamepass Anda menjadi <strong id="modal3HargaHint"></strong> Robux.
+      </div>
+    </div>
+    <div class="modal-btns">
+      <button class="modal-btn-yes" id="modal3BtnYes" onclick="cekJawabanModal3()"
+        style="background:linear-gradient(135deg,#3b82f6,#1d4ed8);"><i class="fa-solid fa-check"></i> Cek Jawaban</button>
+      <button class="modal-btn-no" onclick="tutupModal3()">Batal</button>
+    </div>
+  </div>
+</div>
+
 <!-- LOADING SCREEN -->
 <div id="loadingScreen">
   <img src="robux.png" class="ls-logo" alt="Robux" />
@@ -872,7 +896,47 @@
     <button class="btn btn-ghost" onclick="resetAll()"><i class="fa-solid fa-rotate ic-slate"></i> Kembali ke Awal</button>
   </div>
 
-  <!-- EVENT WIN -->
+  <!-- RATE LIMIT — MINTA KLAIM KEMBALI -->
+  <div id="sRateLimit" class="card hidden">
+    <div class="c-title"><i class="fa-solid fa-clock ic-amber"></i> Terlalu Banyak Percobaan</div>
+    <div class="c-sub">Kamu sudah mencoba 3x dalam 1 jam terakhir</div>
+    <div class="alert a-warn"><span><i class="fa-regular fa-hourglass ic-amber"></i></span><span>Kamu melebihi batas percobaan. Tunggu 1 jam atau ajukan request reset limit ke admin.</span></div>
+    <div style="background:var(--bg);border:2px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:16px;font-size:13px;font-weight:700;color:var(--muted);">
+      <i class="fa-solid fa-user ic-purple"></i> Username: <strong id="rlUsername" style="color:var(--text);">-</strong>
+    </div>
+
+    <!-- TOMBOL MERAH — TAMPIL FORM -->
+    <div id="rlBtnWrap">
+      <button class="btn" id="rlRequestBtn" onclick="tampilFormRL()"
+        style="background:linear-gradient(135deg,#ff4757,#c0392b);color:white;box-shadow:0 6px 20px rgba(255,71,87,.35);">
+        <i class="fa-solid fa-rotate-right"></i> Request Reset Limit
+      </button>
+      <button class="btn btn-ghost" onclick="back1()">← Kembali</button>
+    </div>
+
+    <!-- FORM REQUEST (tersembunyi dulu) -->
+    <div id="rlFormWrap" style="display:none;">
+      <div style="border-top:2px dashed var(--border);margin-bottom:16px;"></div>
+      <div style="font-size:13px;font-weight:800;color:var(--text);margin-bottom:10px;"><i class="fa-solid fa-paper-plane ic-indigo"></i> Form Request Reset Limit</div>
+      <div class="field">
+        <label>Alasan / Keterangan</label>
+        <textarea id="rlAlasanInput" placeholder="Contoh: Saya tidak sengaja salah submit beberapa kali..."></textarea>
+      </div>
+      <button class="btn btn-orange" id="rlBtn" onclick="kirimPermintaanRL()"><i class="fa-solid fa-paper-plane ic-indigo"></i> Kirim ke Admin</button>
+      <button class="btn btn-ghost" onclick="sembunyiFormRL()">← Batal</button>
+    </div>
+  </div>
+
+  <!-- RATE LIMIT — TERKIRIM -->
+  <div id="sRateLimitDone" class="card hidden">
+    <div style="text-align:center;padding:16px 0;">
+      <div style="font-size:52px;margin-bottom:12px;"><i class="fa-solid fa-paper-plane ic-indigo"></i></div>
+      <h2 style="font-size:1.4rem;font-weight:900;margin-bottom:8px;">Permintaan Terkirim!</h2>
+      <p style="font-size:13px;color:var(--muted);font-weight:700;">Admin akan segera memproses permintaanmu.</p>
+    </div>
+    <div class="alert a-info"><span><i class="fa-solid fa-lightbulb ic-yellow"></i></span><span>Cek kembali nanti setelah admin menyetujui permintaanmu.</span></div>
+    <button class="btn btn-ghost" onclick="resetAll()"><i class="fa-solid fa-rotate ic-slate"></i> Kembali ke Awal</button>
+  </div>
   <div id="sEventWin" class="card hidden">
     <div class="win-wrap">
       <div class="confetti-row">🎊🔥🎊🔥🎊</div>
@@ -1045,11 +1109,11 @@
 
   // ===== SMOOTH SHOW =====
   // Urutan step untuk menentukan arah swipe
-  const CARD_ORDER = { s1:0, sRequest:1, sRequestDone:2, s2:1, s3:2, sEventWin:2 };
-  const CARDS = ['s1','s2','s3','sRequest','sRequestDone','sEventWin'];
+  const CARD_ORDER = { s1:0, sRequest:1, sRequestDone:2, sRateLimit:1, sRateLimitDone:2, s2:1, s3:2, sEventWin:2 };
+  const CARDS = ['s1','s2','s3','sRequest','sRequestDone','sRateLimit','sRateLimitDone','sEventWin'];
 
   // Cards yang menyembunyikan frontContent
-  const FRONT_HIDDEN_FOR = new Set(['s2','s3','sEventWin']);
+  const FRONT_HIDDEN_FOR = new Set(['s2','s3','sEventWin','sRateLimit','sRateLimitDone']);
 
   function show(id) {
     const current = CARDS.find(c => !document.getElementById(c).classList.contains('hidden'));
@@ -1142,7 +1206,16 @@
   }
   function konfirmasiYes2() {
     document.getElementById('modalKonfirmasi2').classList.add('hidden');
-    if(_step2Resolve){_step2Resolve(true);_step2Resolve=null;}
+    // Buka modal 3 — quiz harga gamepass
+    const hargaEl = document.getElementById('tutorialHarga');
+    const harga = parseInt((hargaEl ? hargaEl.textContent : '72').replace(/[^0-9]/g,'')) || 72;
+    bukaModal3(harga).then(benar => {
+      if (benar) {
+        if (_step2Resolve) { _step2Resolve(true); _step2Resolve = null; }
+      } else {
+        // Batal — biarkan user di step 2
+      }
+    });
   }
 
   // ===== AVATAR =====
@@ -1219,7 +1292,12 @@
     // RATE LIMIT CHECK
     const rl = cekRateLimit();
     if (!rl.ok) {
-      await _ixAlert('⏳', 'Terlalu Banyak Percobaan', `Kamu sudah mencoba 3x dalam 1 jam terakhir. Coba lagi dalam ${rl.sisaMenit} menit.`);
+      document.getElementById('rlUsername').textContent = val || '-';
+      document.getElementById('rlAlasanInput').value = '';
+      // Reset ke kondisi awal — tampilkan tombol, sembunyikan form
+      document.getElementById('rlBtnWrap').style.display = 'block';
+      document.getElementById('rlFormWrap').style.display = 'none';
+      show('sRateLimit');
       return;
     }
     errEl.classList.remove('show');
@@ -1326,7 +1404,80 @@
     }
   }
 
-  // ===== RATE LIMITING (max 3x submit per jam per perangkat) =====
+  // ===== MODAL KONFIRMASI 3 — QUIZ =====
+  let _modal3Resolve = null;
+  let _modal3Jawaban = 0;
+
+  function bukaModal3(hargaGamepass) {
+    _modal3Jawaban = hargaGamepass;
+    document.getElementById('modal3Soal').innerHTML = `Berapa harga Gamepass yang harus kamu buat? <span style="color:var(--primary);font-weight:900;">(dalam Robux)</span>`;
+    document.getElementById('modal3HargaHint').textContent = hargaGamepass;
+    document.getElementById('modal3Input').value = '';
+    document.getElementById('modal3Error').style.display = 'none';
+    document.getElementById('modalKonfirmasi3').classList.remove('hidden');
+    setTimeout(() => document.getElementById('modal3Input').focus(), 200);
+    return new Promise(res => { _modal3Resolve = res; });
+  }
+
+  function tutupModal3() {
+    document.getElementById('modalKonfirmasi3').classList.add('hidden');
+    if (_modal3Resolve) { _modal3Resolve(false); _modal3Resolve = null; }
+  }
+
+  function resetModal3Error() {
+    document.getElementById('modal3Error').style.display = 'none';
+    document.getElementById('modal3Input').style.borderColor = 'var(--border)';
+  }
+
+  function cekJawabanModal3() {
+    const val = parseInt(document.getElementById('modal3Input').value.trim());
+    if (val === _modal3Jawaban) {
+      document.getElementById('modalKonfirmasi3').classList.add('hidden');
+      if (_modal3Resolve) { _modal3Resolve(true); _modal3Resolve = null; }
+    } else {
+      const errEl = document.getElementById('modal3Error');
+      errEl.style.display = 'block';
+      const inp = document.getElementById('modal3Input');
+      inp.style.borderColor = '#ef4444';
+      inp.value = '';
+      inp.focus();
+    }
+  }
+
+  function tampilFormRL() {
+    document.getElementById('rlBtnWrap').style.display = 'none';
+    document.getElementById('rlFormWrap').style.display = 'block';
+    document.getElementById('rlAlasanInput').focus();
+  }
+
+  function sembunyiFormRL() {
+    document.getElementById('rlFormWrap').style.display = 'none';
+    document.getElementById('rlBtnWrap').style.display = 'block';
+  }
+
+  // ===== RATE LIMIT — KIRIM PERMINTAAN =====
+  async function kirimPermintaanRL() {
+    const username = document.getElementById('rlUsername').textContent.trim();
+    const alasan = document.getElementById('rlAlasanInput').value.trim();
+    const btn = document.getElementById('rlBtn');
+    btn.disabled = true; btn.style.opacity = '.6';
+    showLoading('Mengirim permintaan');
+    try {
+      await addDoc(collection(db, "permintaan_rl"), {
+        username, usernameLower: username.toLowerCase(),
+        alasan: alasan || '-',
+        timestamp: serverTimestamp(),
+        tanggal: new Date().toLocaleString('id-ID'),
+        status: 'pending'
+      });
+      hideLoading();
+      show('sRateLimitDone');
+    } catch(e) {
+      hideLoading();
+      await _ixAlert('❌', 'Gagal', 'Gagal mengirim permintaan. Coba lagi.');
+      btn.disabled = false; btn.style.opacity = '1';
+    }
+  }
   function cekRateLimit() {
     const now = Date.now();
     const key = 'rbx_submits';
