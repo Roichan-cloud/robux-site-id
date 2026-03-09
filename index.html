@@ -36,7 +36,7 @@
 </style>
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getFirestore, collection, addDoc, getDocs, getDoc, setDoc, query, where, orderBy, limit, serverTimestamp, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import { getFirestore, collection, addDoc, getDocs, getDoc, setDoc, query, where, orderBy, limit, serverTimestamp, doc, onSnapshot, increment } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyCsMXNyb8EDDEymYc-dtC9eZx8qorgmyV8",
@@ -108,17 +108,32 @@
 
   // ===== LEADERBOARD animasi smooth =====
   let _lbPrevUsernames = [];
+  let _lbUnsub = null;
 
   window._listenLeaderboard = function() {
+    // Unsubscribe listener lama jika ada (e.g. saat toggle username)
+    if (_lbUnsub) { _lbUnsub(); _lbUnsub = null; }
+    _lbPrevUsernames = [];
     try {
       const q = query(collection(db, "klaim"), orderBy("timestamp", "desc"), limit(5));
-      onSnapshot(q, (snap) => {
+      _lbUnsub = onSnapshot(q, (snap) => {
         const docs = [];
         snap.forEach(d => docs.push(d.data()));
         renderLeaderboardAnimated(docs);
       });
     } catch(e) {}
   };
+
+  // ===== TOGGLE SHOW USERNAME =====
+  let _showFullUsername = false;
+
+  function maskUsername(username) {
+    if (!username) return '???';
+    if (_showFullUsername) return username;
+    const len = username.length;
+    if (len <= 2) return username;
+    return username.slice(0, 2) + '*'.repeat(len - 2);
+  }
 
   function rankBadge(i) {
     const labels = ['1','2','3','4','5'];
@@ -139,7 +154,7 @@
     const isFirst = _lbPrevUsernames.length === 0;
 
     const buildItems = (list, enterSet) => list.map((d, i) => {
-      const masked = (d.username||'???').slice(0,2) + '***';
+      const masked = maskUsername(d.username||'???');
       const isNew = enterSet.has((d.username||'').toLowerCase());
       return `<div class="lb-item${isNew?' lb-enter':''}">
         ${rankBadge(i)}
@@ -151,7 +166,7 @@
     if (isFirst) {
       // Render satu-satu dengan delay
       el.innerHTML = docs.map((d, i) => {
-        const masked = (d.username||'???').slice(0,2) + '***';
+        const masked = maskUsername(d.username||'???');
         return `<div class="lb-item lb-enter" style="animation-delay:${i*90}ms">
           ${rankBadge(i)}
           <div class="lb-name">${masked}</div>
@@ -202,21 +217,19 @@
     } catch(e) { return { status: 'new' }; }
   };
 
-  window._saveKlaim = async function(username, userId, avatarUrl) {
+  window._saveKlaim = async function(username, userId, avatarUrl, robuxJumlah) {
     try {
       await addDoc(collection(db, "klaim"), {
         username, usernameLower: username.toLowerCase(),
         userId, avatarUrl,
+        robux: robuxJumlah || 50,
         timestamp: serverTimestamp(),
         tanggal: new Date().toLocaleString('id-ID'),
         status: 'claimed'
       });
-      // Increment counter terpisah agar tidak hilang saat data dihapus
-      const statsRef = doc(db, "config", "stats");
-      const statsSnap = await getDoc(statsRef);
-      const current = statsSnap.exists() ? (statsSnap.data().totalKlaim || 0) : 0;
-      await setDoc(statsRef, { totalKlaim: current + 1 }, { merge: true });
-    } catch(e) {}
+      // Atomic increment — tidak akan konflik walau bersamaan
+      await setDoc(doc(db, "config", "stats"), { totalKlaim: increment(1) }, { merge: true });
+    } catch(e) { console.error('saveKlaim error:', e); }
   };
 
   window._kirimPermintaan = async function(username, userId, avatarUrl, alasan) {
@@ -327,6 +340,28 @@
     window._listenLeaderboard();
     window._listenEvent();
     listenCounter();
+
+    // ===== MAINTENANCE =====
+    onSnapshot(doc(db, "config", "maintenance"), (snap) => {
+      const aktif = snap.exists() && snap.data().aktif;
+      const pesan = snap.exists() ? (snap.data().pesan || 'Sedang dalam perbaikan. Mohon tunggu.') : '';
+      const banner = document.getElementById('maintenanceBanner');
+      const s1Btn = document.getElementById('s1Btn');
+      const eventBtn = document.getElementById('eventBtn');
+      if (aktif) {
+        document.getElementById('maintenancePesan').textContent = pesan;
+        banner.classList.remove('hidden');
+        // Disable semua tombol submit
+        if (s1Btn) { s1Btn.disabled = true; s1Btn.style.opacity = '.5'; s1Btn.style.cursor = 'not-allowed'; }
+        if (eventBtn) { eventBtn.disabled = true; eventBtn.style.opacity = '.5'; }
+        window._maintenanceAktif = true;
+      } else {
+        banner.classList.add('hidden');
+        if (s1Btn) { s1Btn.disabled = false; s1Btn.style.opacity = ''; s1Btn.style.cursor = ''; }
+        if (eventBtn) { eventBtn.disabled = false; eventBtn.style.opacity = ''; }
+        window._maintenanceAktif = false;
+      }
+    });
 
     // ===== PENGUMUMAN ADMIN =====
     onSnapshot(doc(db, "config", "pengumuman"), (snap) => {
@@ -491,6 +526,16 @@
 
   #frontContent { transition: opacity .3s ease, transform .3s ease; }
   #frontContent.hide { opacity: 0; transform: translateY(-10px); pointer-events: none; height: 0; overflow: hidden; margin: 0; }
+
+  /* ===== MAINTENANCE BANNER ===== */
+  #maintenanceBanner { background:linear-gradient(135deg,#ff4757,#c0392b);border-radius:20px;padding:20px 18px;margin:0 0 16px;color:white;box-shadow:0 6px 24px rgba(255,71,87,0.35);animation:mPulse 2.5s ease-in-out infinite; }
+  @keyframes mPulse { 0%,100%{box-shadow:0 6px 24px rgba(255,71,87,0.35)} 50%{box-shadow:0 6px 36px rgba(255,71,87,0.6)} }
+  .m-header { display:flex;align-items:center;gap:12px;margin-bottom:10px; }
+  .m-icon-wrap { width:42px;height:42px;background:rgba(255,255,255,0.2);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0; }
+  .m-title { font-size:15px;font-weight:900;letter-spacing:0.3px; }
+  .m-sub { font-size:11px;font-weight:700;opacity:.8;margin-top:2px; }
+  .m-pesan { background:rgba(0,0,0,0.2);border-radius:12px;padding:12px 14px;font-size:13px;font-weight:700;line-height:1.6;border-left:3px solid rgba(255,255,255,0.5); }
+  .m-pesan-label { font-size:10px;font-weight:900;opacity:.7;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px; }
   .status-card { background:var(--white);border:1.5px solid var(--border);border-radius:20px;padding:20px;margin:16px 0;box-shadow:var(--shadow); }
   .status-result { border-radius:14px;padding:16px;margin-top:12px;font-size:13px;font-weight:700; }
   .status-pending { background:#fff8e6;border:1.5px solid #ffd88a;color:#925200; }
@@ -667,6 +712,21 @@
     </div>
   </header>
 
+  <!-- MAINTENANCE BANNER (di luar frontContent agar selalu tampil) -->
+  <div id="maintenanceBanner" class="hidden">
+    <div class="m-header">
+      <div class="m-icon-wrap"><i class="fa-solid fa-triangle-exclamation" style="color:white;"></i></div>
+      <div>
+        <div class="m-title">Kesalahan Teknis</div>
+        <div class="m-sub">Klaim Robux sementara tidak tersedia</div>
+      </div>
+    </div>
+    <div class="m-pesan">
+      <div class="m-pesan-label"><i class="fa-solid fa-comment" style="color:rgba(255,255,255,0.7);margin-right:4px;"></i> Pesan dari Admin</div>
+      <div id="maintenancePesan">Sedang dalam perbaikan. Mohon tunggu.</div>
+    </div>
+  </div>
+
   <!-- KONTEN DEPAN (disembunyikan saat step 2/3 aktif) -->
   <div id="frontContent">
 
@@ -773,6 +833,18 @@
       <label for="uInput">Username Roblox</label>
       <input type="text" id="uInput" placeholder="Contoh: Builderman" maxlength="20" />
       <div class="err-msg" id="uErr"><i class="fa-solid fa-triangle-exclamation ic-amber"></i> Masukkan username Roblox kamu!</div>
+    </div>
+    <!-- TOGGLE TAMPILKAN USERNAME -->
+    <div style="display:flex;align-items:center;justify-content:space-between;background:var(--bg);border:1.5px solid var(--border);border-radius:12px;padding:10px 14px;margin-bottom:14px;">
+      <div>
+        <div style="font-size:12px;font-weight:800;color:var(--text);"><i class="fa-solid fa-eye ic-blue"></i> Tampilkan username di leaderboard</div>
+        <div style="font-size:11px;font-weight:600;color:var(--muted);margin-top:2px;" id="toggleUsernameDesc">Nonaktif — username disensor (ia******)</div>
+      </div>
+      <label style="position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0;">
+        <input type="checkbox" id="toggleShowUsername" onchange="onToggleUsername(this.checked)" style="opacity:0;width:0;height:0;" />
+        <span style="position:absolute;cursor:pointer;inset:0;background:#ccc;border-radius:24px;transition:.3s;" id="toggleUsernameTrack"></span>
+        <span style="position:absolute;content:'';height:18px;width:18px;left:3px;bottom:3px;background:white;border-radius:50%;transition:.3s;box-shadow:0 1px 4px rgba(0,0,0,.2);" id="toggleUsernameThumb"></span>
+      </label>
     </div>
     <button class="btn btn-green" id="s1Btn" onclick="step1Next()"><i class="fa-solid fa-rocket ic-yellow"></i> Klaim Robux Sekarang</button>
   </div>
@@ -1137,12 +1209,20 @@
 
   // ===== STEP 1 =====
   async function step1Next() {
+    // MAINTENANCE CHECK
+    if (window._maintenanceAktif) { await _ixAlert('🔧', 'Kesalahan Teknis', 'Klaim sedang tidak tersedia. Lihat banner merah di atas untuk info dari admin.'); return; }
     // HONEYPOT CHECK
     if (document.getElementById('hpField').value !== '') return;
     const inp = document.getElementById('uInput');
     const val = inp.value.trim();
     const errEl = document.getElementById('uErr');
     if (!val) { inp.classList.add('err'); errEl.classList.add('show'); setTimeout(()=>inp.classList.remove('err'),400); return; }
+    // RATE LIMIT CHECK
+    const rl = cekRateLimit();
+    if (!rl.ok) {
+      await _ixAlert('⏳', 'Terlalu Banyak Percobaan', `Kamu sudah mencoba 3x dalam 1 jam terakhir. Coba lagi dalam ${rl.sisaMenit} menit.`);
+      return;
+    }
     errEl.classList.remove('show');
     showLoading('Mengecek username');
     state.username=val; state.userId=null; state.eventMode=false; state.eventRobux=0;
@@ -1159,6 +1239,7 @@
 
   // ===== KLAIM EVENT =====
   async function klaimEvent() {
+    if (window._maintenanceAktif) { await _ixAlert('🔧', 'Kesalahan Teknis', 'Klaim sedang tidak tersedia. Lihat banner merah di atas untuk info dari admin.'); return; }
     const inp = document.getElementById('uInput');
     const val = inp.value.trim();
     if (!val) { await _ixAlert('👤', 'Username Kosong', 'Masukkan username Roblox kamu dulu!'); inp.focus(); return; }
@@ -1208,7 +1289,7 @@
       tembakConfetti(true);  // merah/kuning
     } else {
       showLoading('Menyimpan klaim');
-      if (window._saveKlaim) await window._saveKlaim(state.username, state.userId, state.avatarUrl);
+      if (window._saveKlaim) await window._saveKlaim(state.username, state.userId, state.avatarUrl, 50);
       try {
         const { getDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
         const snap = await getDoc(doc(window._db, "config", "settings"));
@@ -1230,16 +1311,64 @@
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
   }
 
+  // ===== TOGGLE USERNAME HANDLER =====
+  function onToggleUsername(checked) {
+    _showFullUsername = checked;
+    const track = document.getElementById('toggleUsernameTrack');
+    const thumb = document.getElementById('toggleUsernameThumb');
+    const desc  = document.getElementById('toggleUsernameDesc');
+    if (checked) {
+      track.style.background = 'var(--primary)';
+      thumb.style.transform = 'translateX(20px)';
+      desc.textContent = 'Aktif — username tampil penuh di leaderboard';
+    } else {
+      track.style.background = '#ccc';
+      thumb.style.transform = 'translateX(0)';
+      desc.textContent = 'Nonaktif — username disensor (ia*****)';
+    }
+    // Re-render leaderboard dengan setting baru
+    _lbPrevUsernames = [];
+    window._listenLeaderboard && window._listenLeaderboard();
+  }
+
+  // ===== RATE LIMITING (max 3x submit per jam per perangkat) =====
+  function cekRateLimit() {
+    const now = Date.now();
+    const key = 'rbx_submits';
+    let submits = JSON.parse(localStorage.getItem(key) || '[]');
+    // Hapus yang lebih dari 1 jam
+    submits = submits.filter(t => now - t < 3600000);
+    if (submits.length >= 3) {
+      const oldest = submits[0];
+      const sisaMenit = Math.ceil((3600000 - (now - oldest)) / 60000);
+      return { ok: false, sisaMenit };
+    }
+    submits.push(now);
+    localStorage.setItem(key, JSON.stringify(submits));
+    return { ok: true };
+  }
+
   function back1() { show('s1'); setSteps(1); }
 
   function resetAll() {
     state = { username:'', userId:null, avatarUrl:'', eventMode:false, eventRobux:0 };
-    document.getElementById('uInput').value = localStorage.getItem('rbx_username')||'';
+    document.getElementById('uInput').value = '';
     document.getElementById('uErr').classList.remove('show');
     document.getElementById('alasanInput').value = '';
+    // Reset avatar — hapus img/placeholder, kembalikan skeleton
     const avatarCard = document.getElementById('avatarCard');
-    const oldImg = avatarCard ? avatarCard.querySelector('img') : null;
-    if (oldImg) { const sk=document.createElement('div'); sk.className='avatar-skeleton'; sk.id='avatarSkeleton'; avatarCard.replaceChild(sk, oldImg); }
+    if (avatarCard) {
+      const old = avatarCard.querySelector('img, .avatar-img:not(img)');
+      if (old && old.id !== 'avatarSkeleton') {
+        const sk = document.createElement('div');
+        sk.className = 'avatar-skeleton'; sk.id = 'avatarSkeleton';
+        avatarCard.replaceChild(sk, old);
+      } else if (!avatarCard.querySelector('#avatarSkeleton')) {
+        const sk = document.createElement('div');
+        sk.className = 'avatar-skeleton'; sk.id = 'avatarSkeleton';
+        avatarCard.insertBefore(sk, avatarCard.firstChild);
+      }
+    }
     show('s1'); setSteps(1);
   }
 </script>
