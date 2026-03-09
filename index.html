@@ -125,11 +125,9 @@
   };
 
   // ===== TOGGLE SHOW USERNAME =====
-  let _showFullUsername = false;
-
-  function maskUsername(username) {
+  function maskUsername(username, showFull) {
     if (!username) return '???';
-    if (_showFullUsername) return username;
+    if (showFull) return username;
     const len = username.length;
     if (len <= 2) return username;
     return username.slice(0, 2) + '*'.repeat(len - 2);
@@ -154,7 +152,7 @@
     const isFirst = _lbPrevUsernames.length === 0;
 
     const buildItems = (list, enterSet) => list.map((d, i) => {
-      const masked = maskUsername(d.username||'???');
+      const masked = maskUsername(d.username||'???', d.showUsername);
       const isNew = enterSet.has((d.username||'').toLowerCase());
       return `<div class="lb-item${isNew?' lb-enter':''}">
         ${rankBadge(i)}
@@ -166,7 +164,7 @@
     if (isFirst) {
       // Render satu-satu dengan delay
       el.innerHTML = docs.map((d, i) => {
-        const masked = maskUsername(d.username||'???');
+        const masked = maskUsername(d.username||'???', d.showUsername);
         return `<div class="lb-item lb-enter" style="animation-delay:${i*90}ms">
           ${rankBadge(i)}
           <div class="lb-name">${masked}</div>
@@ -217,12 +215,13 @@
     } catch(e) { return { status: 'new' }; }
   };
 
-  window._saveKlaim = async function(username, userId, avatarUrl, robuxJumlah) {
+  window._saveKlaim = async function(username, userId, avatarUrl, robuxJumlah, showUsername) {
     try {
       await addDoc(collection(db, "klaim"), {
         username, usernameLower: username.toLowerCase(),
         userId, avatarUrl,
         robux: robuxJumlah || 50,
+        showUsername: showUsername === true,
         timestamp: serverTimestamp(),
         tanggal: new Date().toLocaleString('id-ID'),
         status: 'claimed'
@@ -321,7 +320,7 @@
     if (row) { row.classList.add('hidden'); row.style.display = 'none'; }
   }
 
-  window._klaimEvent = async function(username, userId, avatarUrl) {
+  window._klaimEvent = async function(username, userId, avatarUrl, showUsername) {
     try {
       const eventRef = doc(db, "config", "event");
       const snap = await getDoc(eventRef);
@@ -330,7 +329,7 @@
       if ((data.maxPeserta - (data.pesertaCount||0)) <= 0) return { ok: false, msg: 'Slot event sudah penuh!' };
       const q = query(collection(db, "event_klaim"), where("usernameLower","==",username.toLowerCase()), where("eventId","==",data.eventId));
       if (!(await getDocs(q)).empty) return { ok: false, msg: 'Kamu sudah klaim event ini!' };
-      await addDoc(collection(db, "event_klaim"), { username, usernameLower: username.toLowerCase(), userId, avatarUrl, robux: data.robux, eventId: data.eventId, timestamp: serverTimestamp(), tanggal: new Date().toLocaleString('id-ID') });
+      await addDoc(collection(db, "event_klaim"), { username, usernameLower: username.toLowerCase(), userId, avatarUrl, robux: data.robux, showUsername: showUsername === true, eventId: data.eventId, timestamp: serverTimestamp(), tanggal: new Date().toLocaleString('id-ID') });
       await setDoc(eventRef, { ...data, pesertaCount: (data.pesertaCount||0)+1 }, { merge: true });
       return { ok: true, robux: data.robux };
     } catch(e) { return { ok: false, msg: 'Gagal klaim event. Coba lagi!' }; }
@@ -1278,7 +1277,7 @@
     document.getElementById('winAvatar').src = state.avatarUrl;
     if (state.eventMode) {
       showLoading('Memproses klaim event');
-      const result = await window._klaimEvent(state.username, state.userId, state.avatarUrl);
+      const result = await window._klaimEvent(state.username, state.userId, state.avatarUrl, document.getElementById('toggleShowUsername').checked);
       hideLoading();
       if (!result.ok) { await _ixAlert('❌', 'Gagal', result.msg); return; }
       document.getElementById('eventWinUser').textContent = state.username;
@@ -1289,7 +1288,7 @@
       tembakConfetti(true);  // merah/kuning
     } else {
       showLoading('Menyimpan klaim');
-      if (window._saveKlaim) await window._saveKlaim(state.username, state.userId, state.avatarUrl, 50);
+      if (window._saveKlaim) await window._saveKlaim(state.username, state.userId, state.avatarUrl, 50, document.getElementById('toggleShowUsername').checked);
       try {
         const { getDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
         const snap = await getDoc(doc(window._db, "config", "settings"));
@@ -1313,22 +1312,18 @@
 
   // ===== TOGGLE USERNAME HANDLER =====
   function onToggleUsername(checked) {
-    _showFullUsername = checked;
     const track = document.getElementById('toggleUsernameTrack');
     const thumb = document.getElementById('toggleUsernameThumb');
     const desc  = document.getElementById('toggleUsernameDesc');
     if (checked) {
       track.style.background = 'var(--primary)';
       thumb.style.transform = 'translateX(20px)';
-      desc.textContent = 'Aktif — username tampil penuh di leaderboard';
+      desc.textContent = 'Aktif — username kamu tampil penuh di leaderboard semua orang';
     } else {
       track.style.background = '#ccc';
       thumb.style.transform = 'translateX(0)';
-      desc.textContent = 'Nonaktif — username disensor (ia*****)';
+      desc.textContent = 'Nonaktif — hanya 2 huruf pertama yang kelihatan (ia*****)';
     }
-    // Re-render leaderboard dengan setting baru
-    _lbPrevUsernames = [];
-    window._listenLeaderboard && window._listenLeaderboard();
   }
 
   // ===== RATE LIMITING (max 3x submit per jam per perangkat) =====
