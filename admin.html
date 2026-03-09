@@ -76,6 +76,7 @@ window._login = async () => {
     if (!snap.exists()) { errEl.textContent = '❌ Config tidak ditemukan!'; errEl.style.display = 'block'; btn.disabled = false; btn.textContent = 'Masuk →'; return; }
     if (val === snap.data().password) {
       sessionStorage.setItem('adminAuth', 'true');
+      localStorage.setItem('adminAuth', 'true');
       showDashboard();
     } else {
       errEl.textContent = '❌ Password salah!'; errEl.style.display = 'block';
@@ -88,6 +89,7 @@ window._login = async () => {
 
 window._logout = () => {
   sessionStorage.removeItem('adminAuth');
+  localStorage.removeItem('adminAuth');
   if (unsubKlaim) { unsubKlaim(); unsubKlaim = null; }
   if (unsubReq) { unsubReq(); unsubReq = null; }
   document.getElementById('dashboard').classList.add('hidden');
@@ -108,7 +110,7 @@ function showDashboard() {
 }
 
 window.addEventListener('load', () => {
-  if (sessionStorage.getItem('adminAuth') === 'true') showDashboard();
+  if (sessionStorage.getItem('adminAuth') === 'true' || localStorage.getItem('adminAuth') === 'true') showDashboard();
 });
 
 // ===== REALTIME LISTENERS =====
