@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Admin Dashboard — Robux Gratis</title>
+<link rel="icon" type="image/png" href="robux.png">
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
@@ -73,6 +74,8 @@ function showDashboard() {
   startRealtimeListeners();
   window._loadEvent();
   window._loadToggleEmailJS();
+  startAutoEventWatcher();
+  loadPengumuman();
 }
 
 window.addEventListener('load', () => {
@@ -82,10 +85,16 @@ window.addEventListener('load', () => {
 // ===== REALTIME LISTENERS =====
 function startRealtimeListeners() {
   let isFirstKlaim = true;
-  const qKlaim = query(collection(db, "klaim"), orderBy("timestamp", "desc"));
-  unsubKlaim = onSnapshot(qKlaim, (snap) => {
+  // Tanpa orderBy agar dokumen tanpa timestamp tidak hilang dari hasil
+  unsubKlaim = onSnapshot(collection(db, "klaim"), (snap) => {
     const docs = [];
     snap.forEach(d => docs.push({ id: d.id, ...d.data() }));
+    // Sort manual descending by timestamp
+    docs.sort((a, b) => {
+      const ta = a.timestamp?.toMillis?.() ?? 0;
+      const tb = b.timestamp?.toMillis?.() ?? 0;
+      return tb - ta;
+    });
     allKlaims = docs;
     renderStats();
     renderKlaimTable();
@@ -104,10 +113,15 @@ function startRealtimeListeners() {
   });
 
   let isFirstReq = true;
-  const qReq = query(collection(db, "permintaan"), orderBy("timestamp", "desc"));
-  unsubReq = onSnapshot(qReq, (snap) => {
+  // Tanpa orderBy agar dokumen tanpa timestamp tidak hilang
+  unsubReq = onSnapshot(collection(db, "permintaan"), (snap) => {
     const docs = [];
     snap.forEach(d => docs.push({ id: d.id, ...d.data() }));
+    docs.sort((a, b) => {
+      const ta = a.timestamp?.toMillis?.() ?? 0;
+      const tb = b.timestamp?.toMillis?.() ?? 0;
+      return tb - ta;
+    });
     allReqs = docs;
     renderReqTable();
     const pending = docs.filter(d => d.status === 'pending').length;
@@ -161,23 +175,57 @@ function renderStats() {
     return d.tanggal.startsWith(today.split('/').reverse().join('/')) || d.tanggal.includes(today);
   }).length;
   document.getElementById('statToday').textContent = todayCount;
+  // Load counter dari Firestore
+  getDoc(doc(db, "config", "stats")).then(s => {
+    const val = s.exists() ? (s.data().totalKlaim || 0) : 0;
+    document.getElementById('statCounter').textContent = val;
+    const inp = document.getElementById('counterInput');
+    if (inp) inp.value = val;
+  }).catch(() => {});
 }
+
+window._setCounter = async () => {
+  const input = document.getElementById('counterInput');
+  const num = parseInt(input.value);
+  if (isNaN(num) || num < 0) { input.style.borderColor = '#ff4757'; setTimeout(() => input.style.borderColor = '#c8c0ff', 1500); return; }
+  if (!confirm(`Set counter ke ${num}?`)) return;
+  await setDoc(doc(db, "config", "stats"), { totalKlaim: num }, { merge: true });
+  document.getElementById('statCounter').textContent = num;
+  input.style.borderColor = '#00c853';
+  setTimeout(() => input.style.borderColor = '#c8c0ff', 1500);
+};
 
 // ===== KLAIM TABLE WITH PAGINATION =====
 function renderKlaimTable(page) {
   if (page) klaimPage = page;
-  const total = allKlaims.length;
+  // Apply filter tanggal
+  let filtered = allKlaims;
+  if (_filterTanggalActive) {
+    // Format tanggal filter: YYYY-MM-DD → bandingkan dengan field tanggal
+    const filterDate = new Date(_filterTanggalActive).toLocaleDateString('id-ID');
+    filtered = allKlaims.filter(d => d.tanggal && d.tanggal.startsWith(filterDate.split('/').reverse().join('/')));
+    // fallback: coba match langsung
+    if (filtered.length === 0) {
+      filtered = allKlaims.filter(d => d.tanggal && d.tanggal.includes(_filterTanggalActive));
+    }
+    const infoEl = document.getElementById('filterKlaimInfo');
+    if (infoEl) infoEl.textContent = `${filtered.length} data pada ${new Date(_filterTanggalActive).toLocaleDateString('id-ID', {day:'numeric',month:'long',year:'numeric'})}`;
+  } else {
+    const infoEl = document.getElementById('filterKlaimInfo');
+    if (infoEl) infoEl.textContent = '';
+  }
+  const total = filtered.length;
   const totalPage = Math.max(1, Math.ceil(total / PER_PAGE));
   if (klaimPage > totalPage) klaimPage = totalPage;
   const start = (klaimPage - 1) * PER_PAGE;
-  const slice = allKlaims.slice(start, start + PER_PAGE);
+  const slice = filtered.slice(start, start + PER_PAGE);
 
   document.getElementById('loadingKlaim').classList.add('hidden');
   const tableDiv = document.getElementById('tableKlaim');
   tableDiv.classList.remove('hidden');
 
   if (total === 0) {
-    document.getElementById('tbodyKlaim').innerHTML = `<tr><td colspan="4" class="empty-row">Belum ada klaim 😊</td></tr>`;
+    document.getElementById('tbodyKlaim').innerHTML = `<tr><td colspan="4" class="empty-row">${_filterTanggalActive ? 'Tidak ada klaim pada tanggal ini' : 'Belum ada klaim 😊'}</td></tr>`;
   } else {
     document.getElementById('tbodyKlaim').innerHTML = slice.map(d => `
       <tr>
@@ -196,8 +244,8 @@ function renderKlaimTable(page) {
       </tr>`).join('');
   }
 
-  // Pagination
-  renderPagination('paginasiKlaim', klaimPage, totalPage);
+  // Pagination — tampilkan info jumlah filtered
+  renderPagination('paginasiKlaim', klaimPage, totalPage, total);
 }
 
 window._deleteKlaim = async (id) => {
@@ -225,10 +273,10 @@ window._copyUsername = (username, btn) => {
 // ===== PAGINATION HELPER =====
 window._gotoKlaimPage = (p) => renderKlaimTable(p);
 
-function renderPagination(containerId, current, total) {
+function renderPagination(containerId, current, total, totalData) {
   const el = document.getElementById(containerId);
   if (!el) return;
-  if (total <= 1) { el.innerHTML = ''; return; }
+  if (total <= 1) { el.innerHTML = totalData !== undefined ? `<div style="padding:10px 16px;font-size:11px;color:var(--muted);font-weight:700;">${totalData} data</div>` : ''; return; }
   let html = `<div class="pagination">`;
   html += `<button class="page-btn" ${current===1?'disabled':''} onclick="window._gotoKlaimPage(${current-1})">‹</button>`;
   let start = Math.max(1, current - 2);
@@ -238,7 +286,7 @@ function renderPagination(containerId, current, total) {
   for (let i = start; i <= end; i++) html += `<button class="page-btn${i===current?' active':''}" onclick="window._gotoKlaimPage(${i})">${i}</button>`;
   if (end < total) html += `${end<total-1?'<span class="page-dots">…</span>':''}<button class="page-btn" onclick="window._gotoKlaimPage(${total})">${total}</button>`;
   html += `<button class="page-btn" ${current===total?'disabled':''} onclick="window._gotoKlaimPage(${current+1})">›</button>`;
-  html += `<span class="page-info">Hal ${current}/${total} · ${allKlaims.length} data</span></div>`;
+  html += `<span class="page-info">Hal ${current}/${total} · ${totalData ?? allKlaims.length} data</span></div>`;
   el.innerHTML = html;
 }
 
@@ -334,11 +382,14 @@ function renderReqTable() {
   document.getElementById('loadingReq').classList.add('hidden');
   const tableDiv = document.getElementById('tableReq');
   tableDiv.classList.remove('hidden');
-  if (allReqs.length === 0) {
-    document.getElementById('tbodyReq').innerHTML = `<tr><td colspan="5" class="empty-row">Belum ada permintaan 😊</td></tr>`;
+  // Apply filter pending
+  const onlyPending = document.getElementById('filterPending')?.checked;
+  const filtered = onlyPending ? allReqs.filter(d => d.status === 'pending') : allReqs;
+  if (filtered.length === 0) {
+    document.getElementById('tbodyReq').innerHTML = `<tr><td colspan="5" class="empty-row">${onlyPending ? 'Tidak ada permintaan pending 😊' : 'Belum ada permintaan 😊'}</td></tr>`;
     return;
   }
-  document.getElementById('tbodyReq').innerHTML = allReqs.map(d => `
+  document.getElementById('tbodyReq').innerHTML = filtered.map(d => `
     <tr>
       <td>
         <div style="display:flex;align-items:center;gap:10px;">
@@ -518,6 +569,74 @@ window._matikanEvent = async () => {
   window._loadEvent();
 };
 
+// ===== FILTER KLAIM BY TANGGAL =====
+let _filterTanggalActive = '';
+window._applyFilterKlaim = () => {
+  _filterTanggalActive = document.getElementById('filterTanggal').value;
+  klaimPage = 1;
+  renderKlaimTable(1);
+};
+window._clearFilterKlaim = () => {
+  document.getElementById('filterTanggal').value = '';
+  _filterTanggalActive = '';
+  klaimPage = 1;
+  renderKlaimTable(1);
+};
+
+// ===== FILTER PERMINTAAN PENDING =====
+window._applyFilterReq = () => renderReqTable();
+
+// ===== PENGUMUMAN ADMIN =====
+window._simpanPengumuman = async (aktif) => {
+  const pesan = document.getElementById('pengumumanInput').value.trim();
+  const statusEl = document.getElementById('pengumumanStatus');
+  try {
+    await setDoc(doc(db, "config", "pengumuman"), { pesan: pesan || '', aktif }, { merge: true });
+    statusEl.style.color = 'var(--primary)';
+    statusEl.textContent = aktif ? `✅ Pengumuman ditampilkan!` : '✅ Pengumuman disembunyikan!';
+  } catch(e) {
+    statusEl.style.color = '#ff4757';
+    statusEl.textContent = 'Gagal menyimpan: ' + e.message;
+  }
+  setTimeout(() => statusEl.textContent = '', 3000);
+};
+
+// Load pengumuman aktif saat dashboard dibuka
+async function loadPengumuman() {
+  try {
+    const snap = await getDoc(doc(db, "config", "pengumuman"));
+    if (snap.exists()) {
+      document.getElementById('pengumumanInput').value = snap.data().pesan || '';
+    }
+  } catch(e) {}
+}
+
+// ===== AUTO MATIKAN EVENT =====
+// Listen realtime ke config/event — otomatis matikan kalau slot penuh atau deadline habis
+let _unsubAutoEvent = null;
+function startAutoEventWatcher() {
+  if (_unsubAutoEvent) _unsubAutoEvent();
+  _unsubAutoEvent = onSnapshot(doc(db, "config", "event"), async (snap) => {
+    if (!snap.exists()) return;
+    const d = snap.data();
+    if (!d.active) return;
+    let shouldStop = false;
+    let reason = '';
+    // Cek slot penuh
+    if (d.pesertaCount >= d.maxPeserta) { shouldStop = true; reason = 'Slot penuh'; }
+    // Cek deadline
+    if (d.deadline) {
+      const dl = d.deadline.toDate ? d.deadline.toDate() : new Date(d.deadline);
+      if (new Date() >= dl) { shouldStop = true; reason = 'Deadline habis'; }
+    }
+    if (shouldStop) {
+      await setDoc(doc(db, "config", "event"), { active: false }, { merge: true });
+      pushNotif('⚡ Event Berakhir', `Event otomatis dimatikan (${reason})`, 'orange');
+      window._loadEvent();
+    }
+  });
+}
+
 // ===== TOGGLE EMAILJS =====
 window._loadToggleEmailJS = async () => {
   try {
@@ -604,7 +723,7 @@ window._switchTab = (tab) => {
   .content { max-width: 1000px; margin: 0 auto; padding: 24px 16px 60px; position: relative; z-index: 1; }
 
   /* ===== STATS ===== */
-  .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 20px; }
+  .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 20px; }
   .stat-card { background: var(--white); border: 1.5px solid var(--border); border-radius: 18px; padding: 20px; text-align: center; box-shadow: var(--shadow); }
   .stat-num { font-size: 2.2rem; font-weight: 900; color: var(--primary); letter-spacing: -1px; }
   .stat-num.orange { color: #ff9f43; }
@@ -774,7 +893,17 @@ window._switchTab = (tab) => {
     <div class="stats-grid">
       <div class="stat-card">
         <div class="stat-num" id="statTotal">—</div>
-        <div class="stat-lbl">Total Klaim</div>
+        <div class="stat-lbl">Data Klaim</div>
+      </div>
+      <div class="stat-card">
+        <div id="statCounter" class="stat-num" style="color:#6c5ce7;">—</div>
+        <div class="stat-lbl">Total Klaim (Counter)</div>
+        <div style="display:flex;gap:6px;margin-top:8px;align-items:center;">
+          <input id="counterInput" type="number" min="0"
+            style="width:80px;padding:5px 8px;border:1.5px solid #c8c0ff;border-radius:8px;font-family:'Nunito',sans-serif;font-size:13px;font-weight:800;color:#6c5ce7;background:#f0f0ff;outline:none;text-align:center;"
+            placeholder="0" onfocus="this.select()" />
+          <button onclick="window._setCounter()" style="padding:5px 10px;background:#6c5ce7;color:white;border:none;border-radius:8px;font-family:'Nunito',sans-serif;font-size:12px;font-weight:800;cursor:pointer;">Set</button>
+        </div>
       </div>
       <div class="stat-card">
         <div class="stat-num" id="statToday">—</div>
@@ -792,6 +921,22 @@ window._switchTab = (tab) => {
       <div class="chart-wrap">
         <canvas id="chartKlaim"></canvas>
       </div>
+    </div>
+
+    <!-- PENGUMUMAN ADMIN -->
+    <div class="table-card" style="padding:20px;margin-bottom:16px;">
+      <div style="font-size:1rem;font-weight:900;color:var(--text);margin-bottom:14px;">📢 Pengumuman untuk User</div>
+      <div style="display:flex;gap:10px;align-items:flex-start;">
+        <textarea id="pengumumanInput" placeholder="Tulis pesan pengumuman di sini... (kosongkan untuk sembunyikan)"
+          style="flex:1;padding:12px 14px;background:var(--bg);border:2px solid var(--border);border-radius:12px;font-family:'Nunito',sans-serif;font-size:14px;font-weight:700;color:var(--text);outline:none;resize:none;height:80px;transition:border-color .2s;"></textarea>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <button onclick="window._simpanPengumuman(true)"
+            style="padding:10px 16px;background:linear-gradient(135deg,#f9a825,#f57f17);color:white;border:none;border-radius:12px;font-family:'Nunito',sans-serif;font-size:13px;font-weight:800;cursor:pointer;white-space:nowrap;">📢 Tampilkan</button>
+          <button onclick="window._simpanPengumuman(false)"
+            style="padding:10px 16px;background:var(--bg);color:var(--muted);border:1.5px solid var(--border);border-radius:12px;font-family:'Nunito',sans-serif;font-size:13px;font-weight:800;cursor:pointer;white-space:nowrap;">✕ Sembunyikan</button>
+        </div>
+      </div>
+      <div id="pengumumanStatus" style="font-size:12px;font-weight:700;margin-top:8px;"></div>
     </div>
 
     <!-- TOGGLE EMAILJS -->
@@ -822,6 +967,15 @@ window._switchTab = (tab) => {
         <div class="table-title">📋 Daftar Username Klaim</div>
         <button onclick="window._hapusSemuaKlaim()" style="padding:7px 14px;background:#fff0f0;color:#ff4757;border:1.5px solid #ffd0d0;border-radius:10px;font-family:'Nunito',sans-serif;font-size:12px;font-weight:800;cursor:pointer;">🗑️ Hapus Semua</button>
       </div>
+      <!-- FILTER TANGGAL -->
+      <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1.5px solid var(--border);flex-wrap:wrap;">
+        <span style="font-size:12px;font-weight:800;color:var(--muted);">🗓️ Filter:</span>
+        <input type="date" id="filterTanggal" onchange="window._applyFilterKlaim()"
+          style="padding:7px 12px;border:1.5px solid var(--border);border-radius:10px;font-family:'Nunito',sans-serif;font-size:13px;font-weight:700;color:var(--text);background:var(--bg);outline:none;" />
+        <button onclick="window._clearFilterKlaim()"
+          style="padding:7px 12px;background:var(--bg);color:var(--muted);border:1.5px solid var(--border);border-radius:10px;font-family:'Nunito',sans-serif;font-size:12px;font-weight:800;cursor:pointer;">✕ Reset</button>
+        <span id="filterKlaimInfo" style="font-size:11px;color:var(--muted);font-weight:700;"></span>
+      </div>
       <div id="loadingKlaim" class="loading">⏳ Memuat data...</div>
       <div id="tableKlaim" class="hidden">
         <table>
@@ -836,7 +990,14 @@ window._switchTab = (tab) => {
     <div id="content-permintaan" class="tab-content table-card hidden">
       <div class="table-header">
         <div class="table-title">📨 Permintaan Klaim Ulang</div>
-        <button onclick="window._hapusSemuaDiproses()" style="padding:7px 14px;background:#fff0f0;color:#ff4757;border:1.5px solid #ffd0d0;border-radius:10px;font-family:'Nunito',sans-serif;font-size:12px;font-weight:800;cursor:pointer;">🗑️ Hapus Diproses</button>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:800;color:var(--muted);cursor:pointer;">
+            <input type="checkbox" id="filterPending" onchange="window._applyFilterReq()"
+              style="width:16px;height:16px;accent-color:var(--primary);cursor:pointer;" />
+            Pending saja
+          </label>
+          <button onclick="window._hapusSemuaDiproses()" style="padding:7px 14px;background:#fff0f0;color:#ff4757;border:1.5px solid #ffd0d0;border-radius:10px;font-family:'Nunito',sans-serif;font-size:12px;font-weight:800;cursor:pointer;">🗑️ Hapus Diproses</button>
+        </div>
       </div>
       <div id="loadingReq" class="loading">⏳ Memuat data...</div>
       <div id="tableReq" class="hidden">
