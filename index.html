@@ -257,8 +257,8 @@
     const pct = Math.min(100, Math.round((terisi / max) * 100));
     document.getElementById('eventProgressBar').style.width = pct + '%';
     document.getElementById('eventProgressLabel').textContent = `${terisi} dari ${max} slot terisi (${pct}%)`;
-    // Update info harga di step 1
-    updateS1InfoHarga(data.gamepassHarga || 72, data.robux || 50);
+    // Update info event di step 1 (normal row TIDAK berubah)
+    showS1EventRow(data.gamepassHarga || 72, data.robux || 50);
     if (_eventCountdownTimer) clearInterval(_eventCountdownTimer);
     if (data.deadline) {
       const deadline = data.deadline.toDate ? data.deadline.toDate() : new Date(data.deadline);
@@ -280,17 +280,32 @@
     const b = document.getElementById('eventBanner');
     if (b) b.classList.add('hidden');
     if (_eventCountdownTimer) { clearInterval(_eventCountdownTimer); _eventCountdownTimer = null; }
-    // Kembalikan ke harga default
-    updateS1InfoHarga(72, 50);
+    // Sembunyikan event row di step 1
+    hideS1EventRow();
   }
 
   function updateS1InfoHarga(harga, robux) {
+    // Ini hanya untuk klaim NORMAL — tidak berubah saat event
     const elHarga = document.getElementById('s1HargaGamepass');
     const elRobux = document.getElementById('s1RobuxDapat');
     const elNum = document.getElementById('s1RobuxNum');
     if (elHarga) elHarga.textContent = harga;
     if (elRobux) elRobux.textContent = robux;
     if (elNum) elNum.textContent = robux;
+  }
+
+  function showS1EventRow(harga, robux) {
+    const row = document.getElementById('s1EventRow');
+    if (!row) return;
+    document.getElementById('s1EventHarga').textContent = harga;
+    document.getElementById('s1EventRobux').textContent = robux;
+    row.classList.remove('hidden');
+    row.style.display = 'flex';
+  }
+
+  function hideS1EventRow() {
+    const row = document.getElementById('s1EventRow');
+    if (row) { row.classList.add('hidden'); row.style.display = 'none'; }
   }
 
   window._klaimEvent = async function(username, userId, avatarUrl) {
@@ -734,12 +749,24 @@
       <div><div class="rbx-num" id="s1RobuxNum">50</div><div class="rbx-lbl">Robux Gratis</div></div>
     </div>
     <!-- INFO HARGA GAMEPASS -->
-    <div id="s1InfoHarga" style="background:linear-gradient(135deg,#f0fff6,#e8fff2);border:2px solid #b2f5d0;border-radius:16px;padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px;">
-      <div style="font-size:24px;flex-shrink:0;"><i class="fa-solid fa-gamepad ic-amber"></i></div>
-      <div>
-        <div style="font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px;">Yang Perlu Kamu Buat</div>
-        <div style="font-size:15px;font-weight:900;color:var(--text);">Gamepass seharga <span id="s1HargaGamepass" style="color:var(--primary);font-size:18px;">72</span> <span style="font-size:13px;font-weight:700;color:var(--muted);">Robux</span></div>
-        <div style="font-size:11px;font-weight:700;color:var(--muted);margin-top:2px;">Kamu akan dapat <span id="s1RobuxDapat" style="color:var(--primary);font-weight:900;">50</span> Robux setelah verified</div>
+    <div id="s1InfoHarga" style="background:linear-gradient(135deg,#f0fff6,#e8fff2);border:2px solid #b2f5d0;border-radius:16px;padding:14px 16px;margin-bottom:16px;">
+      <!-- NORMAL -->
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div style="font-size:24px;flex-shrink:0;"><i class="fa-solid fa-gamepad ic-amber"></i></div>
+        <div>
+          <div style="font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px;">Klaim Normal</div>
+          <div style="font-size:15px;font-weight:900;color:var(--text);">Gamepass seharga <span id="s1HargaGamepass" style="color:var(--primary);font-size:18px;">72</span> <span style="font-size:13px;font-weight:700;color:var(--muted);">Robux</span></div>
+          <div style="font-size:11px;font-weight:700;color:var(--muted);margin-top:2px;">Kamu akan dapat <span id="s1RobuxDapat" style="color:var(--primary);font-weight:900;">50</span> Robux setelah verified</div>
+        </div>
+      </div>
+      <!-- EVENT (muncul kalau ada event aktif) -->
+      <div id="s1EventRow" class="hidden" style="margin-top:10px;padding-top:10px;border-top:1.5px dashed #b2f5d0;display:flex;align-items:center;gap:12px;">
+        <div style="font-size:24px;flex-shrink:0;"><i class="fa-solid fa-fire ic-red"></i></div>
+        <div>
+          <div style="font-size:11px;font-weight:800;color:#ef4444;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px;">Jika Mengikuti Event 🔥</div>
+          <div style="font-size:15px;font-weight:900;color:var(--text);">Gamepass seharga <span id="s1EventHarga" style="color:#ef4444;font-size:18px;">?</span> <span style="font-size:13px;font-weight:700;color:var(--muted);">Robux</span></div>
+          <div style="font-size:11px;font-weight:700;color:var(--muted);margin-top:2px;">Kamu akan dapat <span id="s1EventRobux" style="color:#ef4444;font-weight:900;">?</span> Robux dari event</div>
+        </div>
       </div>
     </div>
     <div class="field">
