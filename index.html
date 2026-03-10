@@ -288,6 +288,25 @@
     } catch(e) {}
   };
 
+  // ===== KIRIM PESAN KE ADMIN =====
+  window._kirimPesanAdmin = async (username, pesan) => {
+    await addDoc(collection(db, 'pesan_masuk'), { username: username || 'Anonim', pesan, dibaca: false, timestamp: serverTimestamp() });
+  };
+
+  // ===== CEK RESET LIMIT DARI ADMIN =====
+  window._cekResetLimit = async (username) => {
+    try {
+      const snap = await getDoc(doc(db, 'config', 'reset_rl_' + username.toLowerCase()));
+      if (snap.exists() && snap.data().aktif) {
+        // Admin sudah approve, hapus localStorage dan flag
+        localStorage.removeItem('rbx_submits');
+        await setDoc(doc(db, 'config', 'reset_rl_' + username.toLowerCase()), { aktif: false }, { merge: true });
+        return true;
+      }
+    } catch(e) {}
+    return false;
+  };
+
   window._listenEvent = function() {
     try {
       onSnapshot(doc(db, "config", "event"), (snap) => {
@@ -381,6 +400,11 @@
     window._listenEvent();
     window._listenPemenangEvent();
     listenCounter();
+
+    // ===== LOAD SETTINGS =====
+    onSnapshot(doc(db, "config", "settings"), (snap) => {
+      if (snap.exists()) window._maxPercobaan = snap.data().maxPercobaan || 3;
+    });
 
     // ===== HARGA NORMAL DARI ADMIN =====
     onSnapshot(doc(db, "config", "harga_normal"), (snap) => {
@@ -1196,7 +1220,7 @@
     if (!pesan) { status.textContent = '⚠️ Tulis pesan dulu!'; status.style.color = '#ef4444'; return; }
     if (pesan.length < 5) { status.textContent = '⚠️ Pesan terlalu pendek!'; status.style.color = '#ef4444'; return; }
     try {
-      await addDoc(collection(db, 'pesan_masuk'), { username: username || 'Anonim', pesan, dibaca: false, timestamp: serverTimestamp() });
+      await window._kirimPesanAdmin(username, pesan);
       document.getElementById('pesanUsername').value = '';
       document.getElementById('pesanIsi').value = '';
       status.textContent = '✅ Pesan terkirim! Admin akan segera merespons.'; status.style.color = '#00c853';
@@ -1254,8 +1278,12 @@
     // Sembunyikan / tampilkan frontContent
     if (FRONT_HIDDEN_FOR.has(id)) {
       fc.classList.add('hide');
+      const pev = document.getElementById('pemenangEventSection');
+      if (pev) pev.style.display = 'none';
     } else {
       fc.classList.remove('hide');
+      const pev = document.getElementById('pemenangEventSection');
+      if (pev) pev.style.display = '';
     }
 
     if (!current || current === id) { showCard(id, 'enter-right'); return; }
@@ -1426,6 +1454,8 @@
       const blSnap = await getDocs(query(collection(db, 'blacklist'), where('usernameLower', '==', val.toLowerCase())));
       if (!blSnap.empty) { await _ixAlert('🚫', 'Akses Ditolak', 'Username kamu terkena pembatasan akses. Hubungi admin jika ada kesalahan.'); return; }
     } catch(e) {}
+    // CEK RESET LIMIT DARI ADMIN (clear localStorage jika disetujui)
+    if (window._cekResetLimit) await window._cekResetLimit(val);
     // RATE LIMIT CHECK
     const rl = cekRateLimit();
     if (!rl.ok) {
@@ -1619,7 +1649,9 @@
     let submits = JSON.parse(localStorage.getItem(key) || '[]');
     // Hapus yang lebih dari 1 jam
     submits = submits.filter(t => now - t < 3600000);
-    if (submits.length >= 3) {
+    // Baca maxPercobaan dari settings (default 3)
+    const maxPercobaan = window._maxPercobaan || 3;
+    if (submits.length >= maxPercobaan) {
       const oldest = submits[0];
       const sisaMenit = Math.ceil((3600000 - (now - oldest)) / 60000);
       return { ok: false, sisaMenit };
