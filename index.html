@@ -136,9 +136,7 @@
   function rankBadge(i) {
     const labels = ['1','2','3','4','5'];
     const cls = i === 0 ? 'lb-rank-1' : i === 1 ? 'lb-rank-2' : i === 2 ? 'lb-rank-3' : 'lb-rank-other';
-    const icons = ['★','★','★','',''];
-    const label = icons[i] ? `${icons[i]}` : labels[i];
-    return `<div class="lb-rank"><div class="lb-rank-badge ${cls}">${label}</div></div>`;
+    return `<div class="lb-rank"><div class="lb-rank-badge ${cls}">${i + 1}</div></div>`;
   }
 
   function renderLeaderboardAnimated(docs) {
@@ -244,10 +242,51 @@
     } catch(e) { return false; }
   };
 
+  window._kirimPermintaanRL = async function(username, alasan) {
+    try {
+      await addDoc(collection(db, "permintaan_rl"), {
+        username,
+        usernameLower: username.toLowerCase(),
+        alasan: alasan || '-',
+        timestamp: serverTimestamp(),
+        tanggal: new Date().toLocaleString('id-ID'),
+        status: 'pending'
+      });
+      return { ok: true };
+    } catch(e) { return { ok: false, msg: e.message || e.code || 'Error' }; }
+  };
+
   // ===== EVENT =====
   let _eventCountdownTimer = null;
 
-  window._listenEvent = function() {
+  window._listenPemenangEvent = function() {
+    try {
+      const q = query(collection(db, "event_klaim"), orderBy("timestamp", "desc"), limit(10));
+      onSnapshot(q, (snap) => {
+        const docs = [];
+        snap.forEach(d => docs.push(d.data()));
+        const section = document.getElementById('pemenangEventSection');
+        const list = document.getElementById('pemenangList');
+        if (!section || !list) return;
+        if (docs.length === 0) { section.classList.add('hidden'); return; }
+        section.classList.remove('hidden');
+        // Tampilkan event ID dari data pertama
+        const eventId = docs[0]?.eventId || '';
+        const eventIdEl = document.getElementById('pemenangEventId');
+        if (eventIdEl) eventIdEl.textContent = eventId ? `Event: ${eventId}` : 'Event terbaru';
+        list.innerHTML = docs.map((d, i) => {
+          const nama = maskUsername(d.username || '???', d.showUsername);
+          const rankBg = '#e2e8f0';
+          const rankColor = '#64748b';
+          return `<div style="display:flex;align-items:center;gap:10px;background:white;border-radius:12px;padding:10px 12px;border:1.5px solid #ffe082;">
+            <div style="width:26px;height:26px;background:${rankBg};border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;color:${rankColor};flex-shrink:0;">${i+1}</div>
+            <div style="flex:1;font-size:14px;font-weight:800;color:#1a2e1f;">${nama}</div>
+            <div style="font-size:12px;font-weight:800;color:#f59e0b;"><i class="fa-solid fa-gem ic-cyan"></i> ${d.robux||'?'} Rbx</div>
+          </div>`;
+        }).join('');
+      });
+    } catch(e) {}
+  };
     try {
       onSnapshot(doc(db, "config", "event"), (snap) => {
         if (!snap.exists() || !snap.data().active) { hideEvent(); return; }
@@ -338,7 +377,41 @@
   window.addEventListener('load', () => {
     window._listenLeaderboard();
     window._listenEvent();
+    window._listenPemenangEvent();
     listenCounter();
+
+    // ===== HARGA NORMAL DARI ADMIN =====
+    onSnapshot(doc(db, "config", "harga_normal"), (snap) => {
+      if (!snap.exists()) return;
+      const harga = snap.data().gamepassHarga || 72;
+      const robux = snap.data().robux || 50;
+      updateS1InfoHarga(harga, robux);
+      // Update elemen statis yang hardcoded
+      const elHarga = document.getElementById('s1HargaGamepass');
+      const elRobux = document.getElementById('s1RobuxDapat');
+      const elNum = document.getElementById('s1RobuxNum');
+      if (elHarga) elHarga.textContent = harga;
+      if (elRobux) elRobux.textContent = robux;
+      if (elNum) elNum.textContent = robux;
+      // Simpan ke state global agar dipakai saat submit
+      window._normalHarga = harga;
+      window._normalRobux = robux;
+    });
+
+    // ===== BROADCAST ADMIN =====
+    onSnapshot(doc(db, "config", "broadcast"), (snap) => {
+      const el = document.getElementById('broadcastBannerUser');
+      if (!el) return;
+      if (snap.exists() && snap.data().aktif && snap.data().pesan) {
+        const warna = { info:'#3b82f6', peringatan:'#f59e0b', darurat:'#ef4444' };
+        const w = warna[snap.data().kategori] || '#3b82f6';
+        el.style.background = w;
+        el.querySelector('#broadcastPesanUser').textContent = snap.data().pesan;
+        el.classList.remove('hidden');
+      } else {
+        el.classList.add('hidden');
+      }
+    });
 
     // ===== MAINTENANCE =====
     onSnapshot(doc(db, "config", "maintenance"), (snap) => {
@@ -503,9 +576,9 @@
   @keyframes lbOut { from{opacity:1;transform:translateY(0)} to{opacity:0;transform:translateY(36px)} }
   .lb-rank { min-width:28px;display:flex;align-items:center;justify-content:center; }
   .lb-rank-badge { width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;flex-shrink:0; }
-  .lb-rank-1 { background:linear-gradient(135deg,#FFD700,#FFA500);color:#7a4800;box-shadow:0 3px 10px rgba(255,180,0,.35); }
-  .lb-rank-2 { background:linear-gradient(135deg,#C0C0C0,#9E9E9E);color:#3a3a3a;box-shadow:0 3px 8px rgba(150,150,150,.3); }
-  .lb-rank-3 { background:linear-gradient(135deg,#CD7F32,#A0522D);color:#fff;box-shadow:0 3px 8px rgba(160,80,30,.3); }
+  .lb-rank-1 { background:var(--bg);color:var(--text);border:2px solid var(--border); }
+  .lb-rank-2 { background:var(--bg);color:var(--text);border:2px solid var(--border); }
+  .lb-rank-3 { background:var(--bg);color:var(--text);border:2px solid var(--border); }
   .lb-rank-other { background:var(--bg);color:var(--muted);border:1.5px solid var(--border); }
   .lb-avatar { width:36px;height:36px;border-radius:10px;border:2px solid var(--border);object-fit:cover; }
   .lb-avatar-empty { width:36px;height:36px;border-radius:10px;background:var(--bg);border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:16px; }
@@ -779,12 +852,37 @@
     </div>
   </div>
 
+  <!-- BROADCAST BANNER -->
+  <div id="broadcastBannerUser" class="hidden" style="border-radius:18px;padding:14px 18px;margin-bottom:16px;display:flex;gap:12px;align-items:center;color:white;">
+    <i class="fa-solid fa-tower-broadcast" style="font-size:20px;flex-shrink:0;"></i>
+    <div style="flex:1;">
+      <div style="font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:0.8px;opacity:.8;margin-bottom:2px;">Siaran Admin</div>
+      <div id="broadcastPesanUser" style="font-size:14px;font-weight:700;line-height:1.5;"></div>
+    </div>
+  </div>
+
   <!-- LEADERBOARD -->
   <div class="leaderboard-card">
     <div class="lb-title"><i class="fa-solid fa-trophy ic-gold"></i> 5 Klaim Terbaru</div>
     <div id="leaderboardList">
       <div style="text-align:center;color:var(--muted);font-size:13px;font-weight:700;padding:12px 0;">Memuat...</div>
     </div>
+  </div>
+
+  <!-- KIRIM PESAN KE ADMIN -->
+  <div class="status-card" style="margin-bottom:16px;">
+    <div style="font-size:14px;font-weight:900;color:var(--text);margin-bottom:4px;"><i class="fa-solid fa-envelope ic-indigo"></i> Kirim Pesan ke Admin</div>
+    <div style="font-size:12px;color:var(--muted);font-weight:600;margin-bottom:14px;">Ada pertanyaan atau masalah? Kirim pesan langsung ke admin.</div>
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <input type="text" id="pesanUsername" placeholder="Username Roblox kamu (opsional)" maxlength="20"
+        style="width:100%;padding:11px 14px;background:var(--bg);border:2px solid var(--border);border-radius:12px;color:var(--text);font-family:'Nunito',sans-serif;font-size:14px;font-weight:700;outline:none;transition:border-color .2s;"
+        onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='var(--border)'" />
+      <textarea id="pesanIsi" placeholder="Tulis pesanmu di sini..." maxlength="300" rows="3"
+        style="width:100%;padding:11px 14px;background:var(--bg);border:2px solid var(--border);border-radius:12px;color:var(--text);font-family:'Nunito',sans-serif;font-size:14px;font-weight:700;outline:none;transition:border-color .2s;resize:none;"
+        onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='var(--border)'"></textarea>
+      <button onclick="kirimPesanAdmin()" style="width:100%;padding:11px;background:linear-gradient(135deg,#6366f1,#4f46e5);color:white;border:none;border-radius:12px;font-family:'Nunito',sans-serif;font-size:14px;font-weight:800;cursor:pointer;transition:transform .18s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform=''"><i class="fa-solid fa-paper-plane"></i> Kirim Pesan</button>
+    </div>
+    <div id="pesanStatus" style="margin-top:8px;font-size:13px;font-weight:700;"></div>
   </div>
 
   <!-- CEK STATUS -->
@@ -820,6 +918,22 @@
   </div>
 
   </div><!-- end #frontContent -->
+
+  <!-- PEMENANG EVENT (di luar frontContent, selalu tampil kalau ada data) -->
+  <div id="pemenangEventSection" class="hidden" style="margin-bottom:16px;">
+    <div style="background:linear-gradient(135deg,#fff8e1,#fff3cd);border:2px solid #ffe082;border-radius:20px;padding:18px 16px;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+        <div style="width:36px;height:36px;background:linear-gradient(135deg,#FFD700,#f59e0b);border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <i class="fa-solid fa-trophy" style="color:white;font-size:16px;"></i>
+        </div>
+        <div>
+          <div style="font-size:14px;font-weight:900;color:#7c5a00;">Pemenang Event</div>
+          <div style="font-size:11px;font-weight:700;color:#a07820;" id="pemenangEventId">Event terbaru</div>
+        </div>
+      </div>
+      <div id="pemenangList" style="display:flex;flex-direction:column;gap:8px;"></div>
+    </div>
+  </div>
 
   <!-- STEP 1 -->
   <div id="s1" class="card">
@@ -1072,6 +1186,22 @@
   }
 
   // ===== CEK STATUS PERMINTAAN =====
+  // ===== KIRIM PESAN KE ADMIN =====
+  async function kirimPesanAdmin() {
+    const username = document.getElementById('pesanUsername').value.trim();
+    const pesan = document.getElementById('pesanIsi').value.trim();
+    const status = document.getElementById('pesanStatus');
+    if (!pesan) { status.textContent = '⚠️ Tulis pesan dulu!'; status.style.color = '#ef4444'; return; }
+    if (pesan.length < 5) { status.textContent = '⚠️ Pesan terlalu pendek!'; status.style.color = '#ef4444'; return; }
+    try {
+      await addDoc(collection(db, 'pesan_masuk'), { username: username || 'Anonim', pesan, dibaca: false, timestamp: serverTimestamp() });
+      document.getElementById('pesanUsername').value = '';
+      document.getElementById('pesanIsi').value = '';
+      status.textContent = '✅ Pesan terkirim! Admin akan segera merespons.'; status.style.color = '#00c853';
+      setTimeout(() => status.textContent = '', 4000);
+    } catch(e) { status.textContent = '❌ Gagal kirim. Coba lagi.'; status.style.color = '#ef4444'; }
+  }
+
   async function cekStatusPermintaan() {
     const val = document.getElementById('statusInput').value.trim();
     const result = document.getElementById('statusResult');
@@ -1289,6 +1419,11 @@
     const val = inp.value.trim();
     const errEl = document.getElementById('uErr');
     if (!val) { inp.classList.add('err'); errEl.classList.add('show'); setTimeout(()=>inp.classList.remove('err'),400); return; }
+    // BLACKLIST CHECK
+    try {
+      const blSnap = await getDocs(query(collection(db, 'blacklist'), where('usernameLower', '==', val.toLowerCase())));
+      if (!blSnap.empty) { await _ixAlert('🚫', 'Akses Ditolak', 'Username kamu terkena pembatasan akses. Hubungi admin jika ada kesalahan.'); return; }
+    } catch(e) {}
     // RATE LIMIT CHECK
     const rl = cekRateLimit();
     if (!rl.ok) {
@@ -1310,7 +1445,7 @@
     if (cek.status === 'exists') { show('sRequest'); return; }
     localStorage.setItem('rbx_username', val);
     setAvatarInStep2(avatarUrl, username);
-    updateTutorial(50, 72, false);
+    updateTutorial(window._normalRobux||50, window._normalHarga||72, false);
     show('s2'); setSteps(2); startS2Countdown();
   }
 
@@ -1467,21 +1602,12 @@
     }
     btn.disabled = true; btn.style.opacity = '.6';
     showLoading('Mengirim permintaan');
-    try {
-      await addDoc(collection(db, "permintaan_rl"), {
-        username,
-        usernameLower: username.toLowerCase(),
-        alasan: alasan || '-',
-        timestamp: serverTimestamp(),
-        tanggal: new Date().toLocaleString('id-ID'),
-        status: 'pending'
-      });
-      hideLoading();
+    const result = await window._kirimPermintaanRL(username, alasan);
+    hideLoading();
+    if (result.ok) {
       show('sRateLimitDone');
-    } catch(e) {
-      console.error('kirimPermintaanRL error:', e);
-      hideLoading();
-      await _ixAlert('❌', 'Gagal', `Gagal mengirim: ${e.message || e.code || 'Coba lagi.'}`);
+    } else {
+      await _ixAlert('❌', 'Gagal', `Gagal mengirim: ${result.msg}`);
       btn.disabled = false; btn.style.opacity = '1';
     }
   }
