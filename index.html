@@ -1691,9 +1691,22 @@
       document.getElementById('modalKonfirmasi3').classList.add('hidden');
       if (_modal3Resolve) { _modal3Resolve(true); _modal3Resolve = null; }
     } else {
-      // Jawaban salah — tutup modal, kembali ke step 2
-      document.getElementById('modalKonfirmasi3').classList.add('hidden');
-      if (_modal3Resolve) { _modal3Resolve(false); _modal3Resolve = null; }
+      // Tampilkan error dulu, baru setelah 2 detik tutup dan kembali ke step 2
+      const errEl = document.getElementById('modal3Error');
+      const inp = document.getElementById('modal3Input');
+      errEl.innerHTML = '<i class="fa-solid fa-circle-xmark"></i> Jawaban salah! Perhatikan lagi tutorial di atas ya.';
+      errEl.style.display = 'block';
+      inp.style.borderColor = '#ef4444';
+      inp.disabled = true;
+      document.getElementById('modal3BtnYes').disabled = true;
+      setTimeout(() => {
+        inp.disabled = false;
+        inp.style.borderColor = 'var(--border)';
+        errEl.style.display = 'none';
+        document.getElementById('modal3BtnYes').disabled = false;
+        document.getElementById('modalKonfirmasi3').classList.add('hidden');
+        if (_modal3Resolve) { _modal3Resolve(false); _modal3Resolve = null; }
+      }, 2000);
     }
   }
 
