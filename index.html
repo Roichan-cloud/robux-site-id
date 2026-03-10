@@ -36,7 +36,7 @@
 </style>
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getFirestore, collection, addDoc, getDocs, getDoc, setDoc, query, where, orderBy, limit, serverTimestamp, doc, onSnapshot, increment } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import { getFirestore, collection, addDoc, getDocs, getDoc, setDoc, updateDoc, query, where, orderBy, limit, serverTimestamp, doc, onSnapshot, increment } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyCsMXNyb8EDDEymYc-dtC9eZx8qorgmyV8",
@@ -207,9 +207,21 @@
 
   window._cekUsername = async function(username) {
     try {
+      // Cek whitelist dulu — kalau ada, boleh klaim berkali-kali tanpa persetujuan
+      const wlSnap = await getDocs(query(collection(db, 'whitelist'), where('usernameLower', '==', username.toLowerCase())));
+      if (!wlSnap.empty) return { status: 'new' };
+
       const q = query(collection(db, "klaim"), where("usernameLower", "==", username.toLowerCase()));
       const snap = await getDocs(q);
-      return snap.empty ? { status: 'new' } : { status: 'exists' };
+      if (snap.empty) return { status: 'new' };
+
+      // Sudah pernah klaim — cek apakah ada permintaan yang disetujui admin
+      const qReq = query(collection(db, "permintaan"),
+        where("usernameLower", "==", username.toLowerCase()),
+        where("status", "==", "approved"));
+      const snapReq = await getDocs(qReq);
+      if (!snapReq.empty) return { status: 'new' }; // boleh klaim lagi
+      return { status: 'exists' };
     } catch(e) { return { status: 'new' }; }
   };
 
@@ -224,8 +236,16 @@
         tanggal: new Date().toLocaleString('id-ID'),
         status: 'claimed'
       });
-      // Atomic increment — tidak akan konflik walau bersamaan
+      // Atomic increment
       await setDoc(doc(db, "config", "stats"), { totalKlaim: increment(1) }, { merge: true });
+      // Tandai permintaan approved sebagai 'used' agar tidak bisa klaim lagi tanpa permintaan baru
+      try {
+        const qReq = query(collection(db, "permintaan"),
+          where("usernameLower", "==", username.toLowerCase()),
+          where("status", "==", "approved"));
+        const snapReq = await getDocs(qReq);
+        snapReq.forEach(async d => await updateDoc(doc(db, "permintaan", d.id), { status: 'used' }));
+      } catch(e2) {}
     } catch(e) { console.error('saveKlaim error:', e); }
   };
 
