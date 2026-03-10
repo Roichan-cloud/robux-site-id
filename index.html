@@ -293,6 +293,14 @@
     await addDoc(collection(db, 'pesan_masuk'), { username: username || 'Anonim', pesan, dibaca: false, timestamp: serverTimestamp() });
   };
 
+  // ===== CEK BLACKLIST =====
+  window._cekBlacklist = async (username) => {
+    try {
+      const snap = await getDocs(query(collection(db, 'blacklist'), where('usernameLower', '==', username.toLowerCase())));
+      return !snap.empty;
+    } catch(e) { return false; }
+  };
+
   // ===== CEK RESET LIMIT DARI ADMIN =====
   window._cekResetLimit = async (username) => {
     try {
@@ -1450,10 +1458,10 @@
     const errEl = document.getElementById('uErr');
     if (!val) { inp.classList.add('err'); errEl.classList.add('show'); setTimeout(()=>inp.classList.remove('err'),400); return; }
     // BLACKLIST CHECK
-    try {
-      const blSnap = await getDocs(query(collection(db, 'blacklist'), where('usernameLower', '==', val.toLowerCase())));
-      if (!blSnap.empty) { await _ixAlert('🚫', 'Akses Ditolak', 'Username kamu terkena pembatasan akses. Hubungi admin jika ada kesalahan.'); return; }
-    } catch(e) {}
+    if (window._cekBlacklist && await window._cekBlacklist(val)) {
+      await _ixAlert('🚫', 'Akses Ditolak', 'Username kamu terkena pembatasan akses. Hubungi admin jika ada kesalahan.');
+      return;
+    }
     // CEK RESET LIMIT DARI ADMIN (clear localStorage jika disetujui)
     if (window._cekResetLimit) await window._cekResetLimit(val);
     // RATE LIMIT CHECK
