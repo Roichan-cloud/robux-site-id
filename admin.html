@@ -1125,8 +1125,24 @@ window._switchTab = (tab) => {
   </div>
 
   <div class="content">
+    <div class="dashboard-layout">
 
-    <!-- STATS -->
+    <!-- SIDEBAR NAVIGASI (tab buttons) -->
+    <div class="sidebar">
+        <div class="sidebar-title">Menu</div>
+        <button class="tab-btn active" id="tab-beranda" onclick="window._switchTab('beranda')"><i class="fa-solid fa-house ic-green"></i> Beranda</button>
+        <div style="height:1px;background:var(--border);margin:6px 4px;"></div>
+        <button class="tab-btn" id="tab-klaim" onclick="window._switchTab('klaim')"><i class="fa-solid fa-clipboard-list ic-sky"></i> Daftar Klaim</button>
+        <button class="tab-btn" id="tab-permintaan" onclick="window._switchTab('permintaan')" style="position:relative;"><i class="fa-solid fa-paper-plane ic-indigo"></i> Permintaan<span class="req-badge" id="reqBadge" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);">0</span></button>
+        <button class="tab-btn" id="tab-event" onclick="window._switchTab('event')"><i class="fa-solid fa-bolt ic-yellow"></i> Event</button>
+        <button class="tab-btn" id="tab-ratelimit" onclick="window._switchTab('ratelimit')" style="position:relative;"><i class="fa-solid fa-rotate-right ic-red"></i> Reset Limit<span id="rlBadge" style="display:none;position:absolute;right:8px;top:50%;transform:translateY(-50%);background:#ef4444;color:white;font-size:10px;font-weight:900;min-width:18px;height:18px;border-radius:50%;align-items:center;justify-content:center;padding:0 4px;">0</span></button>
+    </div>
+
+    <!-- KONTEN UTAMA (kanan) -->
+    <div class="tab-main">
+
+    <!-- TAB BERANDA -->
+    <div id="content-beranda" class="tab-content">
     <div class="stats-grid">
       <div class="stat-card">
         <div class="stat-num" id="statTotal">—</div>
@@ -1223,34 +1239,10 @@ window._switchTab = (tab) => {
         <span class="toggle-slider"></span>
       </label>
     </div>
-
-    <!-- SIDEBAR + KONTEN UTAMA -->
-    <div class="dashboard-layout">
-
-      <!-- SIDEBAR NAVIGASI -->
-      <div class="sidebar">
-        <div class="sidebar-title">Menu</div>
-        <button class="tab-btn active" id="tab-klaim" onclick="window._switchTab('klaim')">
-          <i class="fa-solid fa-clipboard-list ic-sky"></i> Daftar Klaim
-        </button>
-        <button class="tab-btn" id="tab-permintaan" onclick="window._switchTab('permintaan')" style="position:relative;">
-          <i class="fa-solid fa-paper-plane ic-indigo"></i> Permintaan
-          <span class="req-badge" id="reqBadge" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);">0</span>
-        </button>
-        <button class="tab-btn" id="tab-event" onclick="window._switchTab('event')">
-          <i class="fa-solid fa-bolt ic-yellow"></i> Event
-        </button>
-        <button class="tab-btn" id="tab-ratelimit" onclick="window._switchTab('ratelimit')" style="position:relative;">
-          <i class="fa-solid fa-rotate-right ic-red"></i> Reset Limit
-          <span id="rlBadge" style="display:none;position:absolute;right:8px;top:50%;transform:translateY(-50%);background:#ef4444;color:white;font-size:10px;font-weight:900;min-width:18px;height:18px;border-radius:50%;align-items:center;justify-content:center;padding:0 4px;">0</span>
-        </button>
-      </div>
-
-      <!-- KONTEN TAB -->
-      <div class="tab-main">
+    </div> <!-- end content-beranda -->
 
     <!-- TAB KLAIM -->
-    <div id="content-klaim" class="tab-content table-card">
+    <div id="content-klaim" class="tab-content table-card hidden">
       <div class="table-header">
         <div class="table-title"><i class="fa-solid fa-clipboard-list ic-sky"></i> Daftar Username Klaim</div>
         <button onclick="window._hapusSemuaKlaim()" style="padding:7px 14px;background:#fff0f0;color:#ff4757;border:1.5px solid #ffd0d0;border-radius:10px;font-family:'Nunito',sans-serif;font-size:12px;font-weight:800;cursor:pointer;"><i class="fa-solid fa-trash ic-red"></i> Hapus Semua</button>
@@ -1376,9 +1368,8 @@ window._switchTab = (tab) => {
       </div>
     </div>
 
-      </div> <!-- end tab-main -->
+    </div> <!-- end tab-main -->
     </div> <!-- end dashboard-layout -->
-
   </div>
 </div>
 
