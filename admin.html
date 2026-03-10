@@ -862,6 +862,7 @@ window._switchTab = (tab) => {
   if (tab === 'pesan') window._loadPesan();
   if (tab === 'broadcast') window._loadBroadcastRiwayat();
   if (tab === 'pengaturan') window._loadPengaturan();
+};
 
 // ===== LOG AKTIVITAS =====
 async function _addLog(aksi, detail) {
@@ -1051,6 +1052,7 @@ window._loadAnalitik = async () => {
   topEl.innerHTML = sorted.map(([u,n],i)=>`<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);"><div style="width:28px;text-align:center;font-size:16px;">${medal[i]||`<span style='font-weight:900;color:var(--muted);'>${i+1}</span>`}</div><div style="flex:1;font-weight:800;font-size:14px;">${u}</div><div style="font-weight:900;color:var(--primary);font-size:14px;">${n}x</div></div>`).join('');
 };
 </script>
+<style>
   :root {
     --primary: #00c853; --primary2: #00e676;
     --bg: #f0fff6; --white: #ffffff; --text: #1a2e1f;
