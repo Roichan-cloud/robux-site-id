@@ -11,7 +11,7 @@
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getFirestore, collection, getDocs, deleteDoc, doc, updateDoc, setDoc, getDoc, orderBy, query, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, updateDoc, setDoc, getDoc, orderBy, query, where, limit, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCsMXNyb8EDDEymYc-dtC9eZx8qorgmyV8",
@@ -101,6 +101,7 @@ window._logout = () => {
 function showDashboard() {
   document.getElementById('loginPage').classList.add('hidden');
   document.getElementById('dashboard').classList.remove('hidden');
+  window._switchTab('welcome');
   mintaBrowserNotif();
   startRealtimeListeners();
   window._loadEvent();
@@ -855,9 +856,201 @@ window._switchTab = (tab) => {
     const now = new Date(Date.now() - new Date().getTimezoneOffset()*60000).toISOString().slice(0,16);
     document.getElementById('evDeadline').min = now;
   }
+  if (tab === 'analitik') window._loadAnalitik();
+  if (tab === 'log') window._loadLog();
+  if (tab === 'blacklist') window._loadBlacklist();
+  if (tab === 'pesan') window._loadPesan();
+  if (tab === 'broadcast') window._loadBroadcastRiwayat();
+  if (tab === 'pengaturan') window._loadPengaturan();
+
+// ===== LOG AKTIVITAS =====
+async function _addLog(aksi, detail) {
+  try { await addDoc(collection(db, 'log_admin'), { aksi, detail, timestamp: serverTimestamp() }); } catch(e) {}
+}
+window._loadLog = () => {
+  const tbody = document.getElementById('logTbody');
+  onSnapshot(query(collection(db, 'log_admin'), orderBy('timestamp','desc'), limit(100)), snap => {
+    if (snap.empty) { tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;padding:24px;color:var(--muted);font-weight:700;">Belum ada log aktivitas</td></tr>'; return; }
+    tbody.innerHTML = snap.docs.map(d => {
+      const data = d.data();
+      const tgl = data.timestamp?.toDate ? data.timestamp.toDate().toLocaleString('id-ID') : '—';
+      const warna = data.aksi?.includes('Hapus')||data.aksi?.includes('Tolak') ? '#ef4444' : data.aksi?.includes('Aktif')||data.aksi?.includes('Setuju') ? '#00c853' : '#3b82f6';
+      return `<tr style="border-bottom:1px solid var(--border);"><td style="padding:10px 12px;font-weight:800;color:${warna};">${data.aksi||'—'}</td><td style="padding:10px 12px;font-weight:600;color:var(--muted);">${data.detail||'—'}</td><td style="padding:10px 12px;font-weight:600;color:var(--muted);white-space:nowrap;">${tgl}</td></tr>`;
+    }).join('');
+  });
+};
+window._hapusSemuaLog = async () => {
+  if (!await _confirm('Hapus semua log aktivitas?')) return;
+  const snap = await getDocs(collection(db, 'log_admin'));
+  await Promise.all(snap.docs.map(d => deleteDoc(doc(db, 'log_admin', d.id))));
+  _alert('Semua log dihapus!');
+};
+
+// ===== BLACKLIST =====
+window._loadBlacklist = () => {
+  const tbody = document.getElementById('blacklistTbody');
+  onSnapshot(query(collection(db, 'blacklist'), orderBy('timestamp','desc')), snap => {
+    if (snap.empty) { tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:24px;color:var(--muted);font-weight:700;">Blacklist kosong</td></tr>'; return; }
+    tbody.innerHTML = snap.docs.map(d => {
+      const data = d.data();
+      const tgl = data.timestamp?.toDate ? data.timestamp.toDate().toLocaleDateString('id-ID') : '—';
+      return `<tr style="border-bottom:1px solid var(--border);"><td style="padding:10px 12px;font-weight:800;color:#ef4444;">${data.username||'—'}</td><td style="padding:10px 12px;font-weight:600;color:var(--muted);">${data.alasan||'-'}</td><td style="padding:10px 12px;font-weight:600;color:var(--muted);">${tgl}</td><td style="padding:10px 12px;"><button onclick="window._hapusBlacklist('${d.id}','${(data.username||'').replace(/'/g,"\\'")}\')" style="padding:5px 10px;background:#fff0f0;color:#ef4444;border:1.5px solid #ffd0d0;border-radius:8px;font-size:11px;font-weight:800;cursor:pointer;font-family:'Nunito',sans-serif;"><i class="fa-solid fa-trash"></i> Hapus</button></td></tr>`;
+    }).join('');
+  });
+};
+window._tambahBlacklist = async () => {
+  const username = document.getElementById('blacklistInput').value.trim();
+  const alasan = document.getElementById('blacklistAlasan').value.trim();
+  if (!username) { _alert('Masukkan username!'); return; }
+  await addDoc(collection(db, 'blacklist'), { username, usernameLower: username.toLowerCase(), alasan, timestamp: serverTimestamp() });
+  document.getElementById('blacklistInput').value = ''; document.getElementById('blacklistAlasan').value = '';
+  _addLog('Blacklist', `Username: ${username}`);
+  _alert(`"${username}" berhasil di-blacklist!`);
+};
+window._hapusBlacklist = async (id, username) => {
+  if (!await _confirm(`Hapus "${username}" dari blacklist?`)) return;
+  await deleteDoc(doc(db, 'blacklist', id));
+  _addLog('Hapus Blacklist', `Username: ${username}`);
+};
+
+// ===== PESAN MASUK =====
+window._loadPesan = () => {
+  const tbody = document.getElementById('pesanTbody');
+  const badge = document.getElementById('pesanBadge');
+  onSnapshot(query(collection(db, 'pesan_masuk'), orderBy('timestamp','desc')), snap => {
+    const belumDibaca = snap.docs.filter(d => !d.data().dibaca).length;
+    if (belumDibaca > 0) { badge.style.display = 'flex'; badge.textContent = belumDibaca; } else { badge.style.display = 'none'; }
+    if (snap.empty) { tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:24px;color:var(--muted);font-weight:700;">Belum ada pesan masuk</td></tr>'; return; }
+    tbody.innerHTML = snap.docs.map(d => {
+      const data = d.data();
+      const tgl = data.timestamp?.toDate ? data.timestamp.toDate().toLocaleString('id-ID') : '—';
+      const bg = data.dibaca ? '' : 'background:#f0fff6;';
+      if (!data.dibaca) updateDoc(doc(db, 'pesan_masuk', d.id), { dibaca: true });
+      return `<tr style="border-bottom:1px solid var(--border);${bg}"><td style="padding:10px 12px;font-weight:800;">${data.username||'Anonim'}</td><td style="padding:10px 12px;font-weight:600;color:var(--muted);">${data.pesan||'—'}</td><td style="padding:10px 12px;font-weight:600;color:var(--muted);white-space:nowrap;">${tgl}</td><td style="padding:10px 12px;"><button onclick="window._hapusPesan('${d.id}')" style="padding:5px 10px;background:#fff0f0;color:#ef4444;border:1.5px solid #ffd0d0;border-radius:8px;font-size:11px;font-weight:800;cursor:pointer;font-family:'Nunito',sans-serif;"><i class="fa-solid fa-trash"></i></button></td></tr>`;
+    }).join('');
+  });
+};
+window._hapusPesan = async (id) => { await deleteDoc(doc(db, 'pesan_masuk', id)); };
+window._hapusSemuaPesan = async () => {
+  if (!await _confirm('Hapus semua pesan masuk?')) return;
+  const snap = await getDocs(collection(db, 'pesan_masuk'));
+  await Promise.all(snap.docs.map(d => deleteDoc(doc(db, 'pesan_masuk', d.id))));
+  _alert('Semua pesan dihapus!');
+};
+
+// ===== BROADCAST =====
+window._kirimBroadcast = async () => {
+  const pesan = document.getElementById('broadcastPesan').value.trim();
+  const kategori = document.querySelector('input[name="bcKategori"]:checked')?.value || 'info';
+  const status = document.getElementById('broadcastStatus');
+  if (!pesan) { status.textContent = '⚠️ Tulis pesan dulu!'; status.style.color='#ef4444'; return; }
+  await setDoc(doc(db, 'config', 'broadcast'), { pesan, kategori, aktif: true, timestamp: serverTimestamp() });
+  await addDoc(collection(db, 'broadcast_riwayat'), { pesan, kategori, timestamp: serverTimestamp() });
+  document.getElementById('broadcastPesan').value = '';
+  status.textContent = '✅ Broadcast berhasil dikirim!'; status.style.color='#00c853';
+  _addLog('Kirim Broadcast', `[${kategori}] ${pesan.slice(0,40)}`);
+  window._loadBroadcastRiwayat();
+  setTimeout(() => status.textContent = '', 3000);
+};
+window._hapusBroadcast = async () => {
+  await setDoc(doc(db, 'config', 'broadcast'), { aktif: false }, { merge: true });
+  _addLog('Sembunyikan Broadcast', '');
+  const s = document.getElementById('broadcastStatus');
+  s.textContent = '✅ Broadcast disembunyikan!'; s.style.color='#00c853';
+  setTimeout(() => s.textContent = '', 2500);
+};
+window._loadBroadcastRiwayat = async () => {
+  const el = document.getElementById('broadcastRiwayat');
+  if (!el) return;
+  const snap = await getDocs(query(collection(db, 'broadcast_riwayat'), orderBy('timestamp','desc'), limit(20)));
+  if (snap.empty) { el.innerHTML = '<div style="color:var(--muted);font-weight:700;text-align:center;padding:12px;">Belum ada riwayat</div>'; return; }
+  const warna = { info:'#3b82f6', peringatan:'#f59e0b', darurat:'#ef4444' };
+  el.innerHTML = snap.docs.map(d => {
+    const data = d.data();
+    const tgl = data.timestamp?.toDate ? data.timestamp.toDate().toLocaleString('id-ID') : '—';
+    const w = warna[data.kategori]||'#3b82f6';
+    return `<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);"><span style="background:${w};color:white;font-size:10px;font-weight:900;padding:2px 8px;border-radius:20px;flex-shrink:0;margin-top:2px;">${(data.kategori||'info').toUpperCase()}</span><div style="flex:1;"><div style="font-weight:700;color:var(--text);font-size:13px;">${data.pesan}</div><div style="font-size:11px;color:var(--muted);font-weight:600;margin-top:2px;">${tgl}</div></div></div>`;
+  }).join('');
+};
+
+// ===== PENGATURAN =====
+window._loadPengaturan = async () => {
+  try {
+    const snap = await getDoc(doc(db, 'config', 'harga_normal'));
+    if (snap.exists()) { document.getElementById('setHargaGamepass').value = snap.data().gamepassHarga||72; document.getElementById('setRobuxNormal').value = snap.data().robux||50; }
+    else { document.getElementById('setHargaGamepass').value = 72; document.getElementById('setRobuxNormal').value = 50; }
+  } catch(e) {}
+  try {
+    const snap = await getDoc(doc(db, 'config', 'settings'));
+    if (snap.exists()) document.getElementById('setRateLimit').value = snap.data().maxPercobaan||3;
+  } catch(e) {}
+};
+window._simpanHargaNormal = async () => {
+  const harga = parseInt(document.getElementById('setHargaGamepass').value);
+  const robux = parseInt(document.getElementById('setRobuxNormal').value);
+  const status = document.getElementById('hargaStatus');
+  if (!harga||!robux||harga<1||robux<1) { status.textContent='⚠️ Isi dengan angka valid!'; status.style.color='#ef4444'; return; }
+  await setDoc(doc(db, 'config', 'harga_normal'), { gamepassHarga: harga, robux, updatedAt: serverTimestamp() });
+  _addLog('Ubah Harga Normal', `Gamepass: ${harga}R → Dapat: ${robux}R`);
+  status.textContent=`✅ Disimpan! Gamepass ${harga}R → Dapat ${robux}R`; status.style.color='#00c853';
+  setTimeout(() => status.textContent='', 3000);
+};
+window._simpanRateLimit = async () => {
+  const max = parseInt(document.getElementById('setRateLimit').value);
+  const status = document.getElementById('rateLimitStatus');
+  if (!max||max<1) { status.textContent='⚠️ Masukkan angka minimal 1!'; status.style.color='#ef4444'; return; }
+  await setDoc(doc(db, 'config', 'settings'), { maxPercobaan: max }, { merge: true });
+  _addLog('Ubah Rate Limit', `Maks. ${max}x per jam`);
+  status.textContent=`✅ Rate limit: ${max}x per jam`; status.style.color='#00c853';
+  setTimeout(() => status.textContent='', 3000);
+};
+window._gantiPassword = async () => {
+  const baru = document.getElementById('setPasswordBaru').value;
+  const konfirm = document.getElementById('setPasswordKonfirm').value;
+  const status = document.getElementById('passwordStatus');
+  if (!baru) { status.textContent='⚠️ Masukkan password baru!'; status.style.color='#ef4444'; return; }
+  if (baru!==konfirm) { status.textContent='⚠️ Password tidak cocok!'; status.style.color='#ef4444'; return; }
+  if (baru.length<6) { status.textContent='⚠️ Minimal 6 karakter!'; status.style.color='#ef4444'; return; }
+  await setDoc(doc(db, 'config', 'admin'), { password: baru }, { merge: true });
+  _addLog('Ganti Password', 'Password admin diubah');
+  document.getElementById('setPasswordBaru').value=''; document.getElementById('setPasswordKonfirm').value='';
+  status.textContent='✅ Password berhasil diubah!'; status.style.color='#00c853';
+  setTimeout(() => status.textContent='', 3000);
+};
+
+// ===== ANALITIK =====
+let _chartJam = null, _chartMinggu = null;
+window._loadAnalitik = async () => {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate()+1);
+  const snapHari = await getDocs(query(collection(db, 'klaim'), where('timestamp','>=',today), where('timestamp','<',tomorrow)));
+  const perJam = Array(24).fill(0);
+  snapHari.docs.forEach(d => { const jam = d.data().timestamp?.toDate?.()?.getHours?.()??0; perJam[jam]++; });
+  if (_chartJam) _chartJam.destroy();
+  const ctx1 = document.getElementById('chartPerJam').getContext('2d');
+  _chartJam = new Chart(ctx1, { type:'bar', data:{ labels:Array.from({length:24},(_,i)=>`${i}:00`), datasets:[{ label:'Klaim', data:perJam, backgroundColor:'rgba(0,200,83,0.7)', borderRadius:6 }] }, options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true,ticks:{stepSize:1,precision:0}}} } });
+
+  const dataMinggu = [], labelsMinggu = [];
+  for (let w=3; w>=0; w--) {
+    const start = new Date(today); start.setDate(start.getDate()-w*7-today.getDay());
+    const end = new Date(start); end.setDate(end.getDate()+7);
+    const snapW = await getDocs(query(collection(db,'klaim'), where('timestamp','>=',start), where('timestamp','<',end)));
+    labelsMinggu.push(`Minggu ${4-w}`); dataMinggu.push(snapW.size);
+  }
+  if (_chartMinggu) _chartMinggu.destroy();
+  const ctx2 = document.getElementById('chartPerMinggu').getContext('2d');
+  _chartMinggu = new Chart(ctx2, { type:'bar', data:{ labels:labelsMinggu, datasets:[{ label:'Klaim', data:dataMinggu, backgroundColor:'rgba(99,102,241,0.7)', borderRadius:8 }] }, options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true,ticks:{stepSize:1,precision:0}}} } });
+
+  const snapAll = await getDocs(collection(db,'klaim'));
+  const counter = {};
+  snapAll.docs.forEach(d => { const u = d.data().username||'?'; counter[u]=(counter[u]||0)+1; });
+  const sorted = Object.entries(counter).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  const topEl = document.getElementById('topUsernameList');
+  if (!sorted.length) { topEl.textContent='Belum ada data.'; return; }
+  const medal = ['🥇','🥈','🥉'];
+  topEl.innerHTML = sorted.map(([u,n],i)=>`<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);"><div style="width:28px;text-align:center;font-size:16px;">${medal[i]||`<span style='font-weight:900;color:var(--muted);'>${i+1}</span>`}</div><div style="flex:1;font-weight:800;font-size:14px;">${u}</div><div style="font-weight:900;color:var(--primary);font-size:14px;">${n}x</div></div>`).join('');
 };
 </script>
-<style>
   :root {
     --primary: #00c853; --primary2: #00e676;
     --bg: #f0fff6; --white: #ffffff; --text: #1a2e1f;
@@ -915,22 +1108,36 @@ window._switchTab = (tab) => {
 
   /* ===== SIDEBAR LAYOUT ===== */
   .dashboard-layout { display: flex; gap: 20px; align-items: flex-start; }
-  .sidebar { width: 200px; flex-shrink: 0; background: var(--white); border: 1.5px solid var(--border); border-radius: 20px; padding: 12px; position: sticky; top: 20px; }
+  .sidebar { width: 190px; flex-shrink: 0; background: var(--white); border: 1.5px solid var(--border); border-radius: 20px; padding: 12px; position: sticky; top: 20px; max-height: calc(100vh - 40px); overflow-y: auto; }
   .sidebar-title { font-size: 10px; font-weight: 900; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; padding: 6px 10px 10px; }
+  .sidebar-divider { height: 1px; background: var(--border); margin: 4px 6px 8px; }
   .tab-btn { display: flex; align-items: center; gap: 8px; width: 100%; padding: 10px 12px; border-radius: 12px; border: none; background: transparent; color: var(--muted); font-family: 'Nunito', sans-serif; font-size: 13px; font-weight: 800; cursor: pointer; transition: all .2s; position: relative; text-align: left; margin-bottom: 4px; }
   .tab-btn:hover { background: var(--bg); color: var(--text); }
   .tab-btn.active { background: linear-gradient(135deg,var(--primary),var(--primary2)); color: white; box-shadow: 0 4px 14px rgba(0,200,83,0.35); }
-  .tab-btn.active .ic-sky, .tab-btn.active .ic-indigo, .tab-btn.active .ic-yellow,
-  .tab-btn.active .ic-red, .tab-btn.active .ic-amber { color: white !important; }
-  .tab-main { flex: 1; min-width: 0; }
-  .tab-content { display: block; }
+  .tab-btn.active i { color: white !important; }
+  .tab-main { flex: 1; min-width: 0; width: 100%; }
+  .tab-content { display: block; width: 100%; }
   .tab-content.hidden { display: none !important; }
+  /* Mobile: sidebar di atas, horizontal scroll */
   @media(max-width: 700px) {
-    .dashboard-layout { flex-direction: column; }
-    .sidebar { width: 100%; position: static; display: flex; flex-wrap: wrap; gap: 6px; padding: 10px; }
+    .dashboard-layout { flex-direction: column; gap: 12px; }
+    .sidebar { width: 100%; position: static; display: flex; flex-wrap: nowrap; gap: 6px; padding: 10px; overflow-x: auto; overflow-y: visible; max-height: none; border-radius: 16px; }
     .sidebar-title { display: none; }
-    .tab-btn { width: auto; flex: 1; min-width: 0; justify-content: center; font-size: 11px; padding: 8px 6px; }
+    .sidebar-divider { display: none; }
+    .tab-btn { width: auto; flex-shrink: 0; justify-content: center; font-size: 11px; padding: 8px 10px; white-space: nowrap; margin-bottom: 0; }
+    .tab-main { width: 100%; }
   }
+  /* ===== FORM FIELDS ===== */
+  .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .form-field label { font-size: 11px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px; }
+  .form-field input, .form-field textarea, .form-field select { width: 100%; padding: 10px 14px; background: var(--bg); border: 2px solid var(--border); border-radius: 12px; font-family: 'Nunito', sans-serif; font-size: 14px; font-weight: 700; color: var(--text); outline: none; box-sizing: border-box; transition: border-color .2s; }
+  .form-field input:focus, .form-field textarea:focus { border-color: var(--primary); }
+  .ic-orange { color: #f97316; }
+  .ic-violet { color: #8b5cf6; }
+  .ic-gold { color: #d97706; }
+  .ic-slate { color: #64748b; }
+  .ic-blue { color: #3b82f6; }
+  @media(max-width:700px) { .field-grid { grid-template-columns: 1fr; } }
   /* ===== STATS ===== */
   .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 20px; }
   .stat-card { background: var(--white); border: 1.5px solid var(--border); border-radius: 18px; padding: 20px; text-align: center; box-shadow: var(--shadow); }
@@ -1130,19 +1337,35 @@ window._switchTab = (tab) => {
     <!-- SIDEBAR NAVIGASI (tab buttons) -->
     <div class="sidebar">
         <div class="sidebar-title">Menu</div>
-        <button class="tab-btn active" id="tab-beranda" onclick="window._switchTab('beranda')"><i class="fa-solid fa-house ic-green"></i> Beranda</button>
-        <div style="height:1px;background:var(--border);margin:6px 4px;"></div>
+        <button class="tab-btn active" id="tab-welcome" onclick="window._switchTab('welcome')"><i class="fa-solid fa-star ic-yellow"></i> Overview</button>
+        <button class="tab-btn" id="tab-beranda" onclick="window._switchTab('beranda')"><i class="fa-solid fa-house ic-green"></i> Beranda</button>
+        <div class="sidebar-divider"></div>
+        <div class="sidebar-title" style="padding-top:4px;">Operasional</div>
         <button class="tab-btn" id="tab-klaim" onclick="window._switchTab('klaim')"><i class="fa-solid fa-clipboard-list ic-sky"></i> Daftar Klaim</button>
         <button class="tab-btn" id="tab-permintaan" onclick="window._switchTab('permintaan')" style="position:relative;"><i class="fa-solid fa-paper-plane ic-indigo"></i> Permintaan<span class="req-badge" id="reqBadge" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);">0</span></button>
         <button class="tab-btn" id="tab-event" onclick="window._switchTab('event')"><i class="fa-solid fa-bolt ic-yellow"></i> Event</button>
         <button class="tab-btn" id="tab-ratelimit" onclick="window._switchTab('ratelimit')" style="position:relative;"><i class="fa-solid fa-rotate-right ic-red"></i> Reset Limit<span id="rlBadge" style="display:none;position:absolute;right:8px;top:50%;transform:translateY(-50%);background:#ef4444;color:white;font-size:10px;font-weight:900;min-width:18px;height:18px;border-radius:50%;align-items:center;justify-content:center;padding:0 4px;">0</span></button>
+        <div class="sidebar-divider"></div>
+        <div class="sidebar-title" style="padding-top:4px;">Data & Monitoring</div>
+        <button class="tab-btn" id="tab-log" onclick="window._switchTab('log')"><i class="fa-solid fa-scroll ic-slate"></i> Log Aktivitas</button>
+        <button class="tab-btn" id="tab-blacklist" onclick="window._switchTab('blacklist')"><i class="fa-solid fa-ban ic-red"></i> Blacklist</button>
+        <div class="sidebar-divider"></div>
+        <div class="sidebar-title" style="padding-top:4px;">Komunikasi</div>
+        <button class="tab-btn" id="tab-pesan" onclick="window._switchTab('pesan')" style="position:relative;"><i class="fa-solid fa-envelope ic-indigo"></i> Pesan Masuk<span id="pesanBadge" style="display:none;position:absolute;right:8px;top:50%;transform:translateY(-50%);background:#ef4444;color:white;font-size:10px;font-weight:900;min-width:18px;height:18px;border-radius:50%;align-items:center;justify-content:center;padding:0 4px;">0</span></button>
+        <button class="tab-btn" id="tab-broadcast" onclick="window._switchTab('broadcast')"><i class="fa-solid fa-bullhorn ic-orange"></i> Broadcast</button>
+        <div class="sidebar-divider"></div>
+        <div class="sidebar-title" style="padding-top:4px;">Konfigurasi</div>
+        <button class="tab-btn" id="tab-pengaturan" onclick="window._switchTab('pengaturan')"><i class="fa-solid fa-gear ic-slate"></i> Pengaturan</button>
+        <button class="tab-btn" id="tab-analitik" onclick="window._switchTab('analitik')"><i class="fa-solid fa-chart-line ic-violet"></i> Analitik</button>
+        <div class="sidebar-divider"></div>
+        <button class="tab-btn" id="tab-bantuan" onclick="window._switchTab('bantuan')"><i class="fa-solid fa-circle-question ic-blue"></i> Bantuan</button>
     </div>
 
     <!-- KONTEN UTAMA (kanan) -->
     <div class="tab-main">
 
     <!-- TAB BERANDA -->
-    <div id="content-beranda" class="tab-content">
+    <div id="content-beranda" class="tab-content hidden">
     <div class="stats-grid">
       <div class="stat-card">
         <div class="stat-num" id="statTotal">—</div>
@@ -1365,6 +1588,431 @@ window._switchTab = (tab) => {
             <tr><td colspan="5" style="text-align:center;padding:24px;color:var(--muted);font-weight:700;">Memuat...</td></tr>
           </tbody>
         </table>
+      </div>
+    </div>
+
+    <!-- TAB SELAMAT DATANG -->
+    <div id="content-welcome" class="tab-content">
+      <div style="background:linear-gradient(135deg,#00c853,#00e676);border-radius:24px;padding:36px 28px;text-align:center;margin-bottom:16px;position:relative;overflow:hidden;">
+        <div style="position:absolute;inset:0;background:url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><circle cx=%2210%22 cy=%2210%22 r=%228%22 fill=%22rgba(255,255,255,0.08)%22/><circle cx=%2285%22 cy=%2220%22 r=%2212%22 fill=%22rgba(255,255,255,0.06)%22/><circle cx=%2250%22 cy=%2280%22 r=%2215%22 fill=%22rgba(255,255,255,0.05)%22/></svg>');pointer-events:none;"></div>
+        <div style="font-size:56px;margin-bottom:12px;">👋</div>
+        <h1 style="font-size:1.8rem;font-weight:900;color:white;margin-bottom:8px;">Selamat Datang, Admin!</h1>
+        <p style="font-size:14px;color:rgba(255,255,255,0.85);font-weight:700;max-width:400px;margin:0 auto;">Kamu berhasil masuk ke dashboard admin Robux Gratis. Semua kendali ada di tanganmu.</p>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;">
+        <div style="background:white;border:1.5px solid var(--border);border-radius:18px;padding:20px;">
+          <div style="font-size:28px;margin-bottom:8px;"><i class="fa-solid fa-house ic-green"></i></div>
+          <div style="font-size:14px;font-weight:900;color:var(--text);margin-bottom:4px;">Beranda</div>
+          <div style="font-size:12px;font-weight:600;color:var(--muted);">Pantau statistik, grafik, kelola pengumuman & maintenance</div>
+        </div>
+        <div style="background:white;border:1.5px solid var(--border);border-radius:18px;padding:20px;">
+          <div style="font-size:28px;margin-bottom:8px;"><i class="fa-solid fa-clipboard-list ic-sky"></i></div>
+          <div style="font-size:14px;font-weight:900;color:var(--text);margin-bottom:4px;">Daftar Klaim</div>
+          <div style="font-size:12px;font-weight:600;color:var(--muted);">Lihat semua username yang sudah klaim, filter & hapus data</div>
+        </div>
+        <div style="background:white;border:1.5px solid var(--border);border-radius:18px;padding:20px;">
+          <div style="font-size:28px;margin-bottom:8px;"><i class="fa-solid fa-paper-plane ic-indigo"></i></div>
+          <div style="font-size:14px;font-weight:900;color:var(--text);margin-bottom:4px;">Permintaan</div>
+          <div style="font-size:12px;font-weight:600;color:var(--muted);">Setujui atau tolak permintaan klaim ulang dari user</div>
+        </div>
+        <div style="background:white;border:1.5px solid var(--border);border-radius:18px;padding:20px;">
+          <div style="font-size:28px;margin-bottom:8px;"><i class="fa-solid fa-bolt ic-yellow"></i></div>
+          <div style="font-size:14px;font-weight:900;color:var(--text);margin-bottom:4px;">Event</div>
+          <div style="font-size:12px;font-weight:600;color:var(--muted);">Buat & kelola event dadakan dengan slot & countdown</div>
+        </div>
+        <div style="background:white;border:1.5px solid var(--border);border-radius:18px;padding:20px;">
+          <div style="font-size:28px;margin-bottom:8px;"><i class="fa-solid fa-rotate-right ic-red"></i></div>
+          <div style="font-size:14px;font-weight:900;color:var(--text);margin-bottom:4px;">Reset Limit</div>
+          <div style="font-size:12px;font-weight:600;color:var(--muted);">Kelola permintaan reset dari user yang kena rate limit</div>
+        </div>
+        <div style="background:white;border:1.5px solid var(--border);border-radius:18px;padding:20px;">
+          <div style="font-size:28px;margin-bottom:8px;"><i class="fa-solid fa-circle-question ic-blue"></i></div>
+          <div style="font-size:14px;font-weight:900;color:var(--text);margin-bottom:4px;">Bantuan</div>
+          <div style="font-size:12px;font-weight:600;color:var(--muted);">Tutorial lengkap cara menggunakan semua fitur dashboard</div>
+        </div>
+      </div>
+
+      <div style="background:var(--bg);border:1.5px solid var(--border);border-radius:16px;padding:16px 18px;text-align:center;">
+        <div style="font-size:13px;font-weight:700;color:var(--muted);">Mulai dari mana? Klik <strong style="color:var(--primary);">Beranda</strong> untuk melihat statistik, atau <strong style="color:#3b82f6;">Bantuan</strong> untuk tutorial lengkap.</div>
+      </div>
+    </div>
+
+    <!-- TAB BANTUAN -->
+    <div id="content-bantuan" class="tab-content hidden">
+      <div style="background:linear-gradient(135deg,#3b82f6,#1d4ed8);border-radius:20px;padding:24px;margin-bottom:16px;color:white;text-align:center;">
+        <div style="font-size:40px;margin-bottom:8px;"><i class="fa-solid fa-circle-question"></i></div>
+        <div style="font-size:1.3rem;font-weight:900;">Panduan Dashboard Admin</div>
+        <div style="font-size:13px;opacity:.85;margin-top:4px;font-weight:600;">Tutorial lengkap semua fitur</div>
+      </div>
+
+        <div style="background:white;border:1.5px solid var(--border);border-radius:18px;margin-bottom:14px;overflow:hidden;">
+          <div style="background:var(--bg);padding:14px 18px;border-bottom:1.5px solid var(--border);display:flex;align-items:center;gap:10px;">
+            <i class="fa-solid fa-house ic-green" style="font-size:18px;"></i>
+            <div style="font-size:14px;font-weight:900;color:var(--text);">Tab Beranda</div>
+          </div>
+          <div style="padding:14px 18px;">
+              <div style="display:flex;gap:10px;margin-bottom:10px;">
+                <div style="width:22px;height:22px;background:var(--primary);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;flex-shrink:0;margin-top:1px;">1</div>
+                <div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.6;">Lihat 4 kartu statistik: Data Klaim (jumlah dokumen), Total Klaim Counter (angka global), Hari Ini, dan Pending.</div>
+              </div>
+              <div style="display:flex;gap:10px;margin-bottom:10px;">
+                <div style="width:22px;height:22px;background:var(--primary);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;flex-shrink:0;margin-top:1px;">2</div>
+                <div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.6;">Total Klaim Counter bisa diubah manual — masukkan angka di kotak lalu klik Set.</div>
+              </div>
+              <div style="display:flex;gap:10px;margin-bottom:10px;">
+                <div style="width:22px;height:22px;background:var(--primary);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;flex-shrink:0;margin-top:1px;">3</div>
+                <div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.6;">Grafik batang menampilkan klaim 7 hari terakhir secara otomatis.</div>
+              </div>
+              <div style="display:flex;gap:10px;margin-bottom:10px;">
+                <div style="width:22px;height:22px;background:var(--primary);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;flex-shrink:0;margin-top:1px;">4</div>
+                <div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.6;">Panel Kesalahan Teknis: aktifkan untuk memblokir semua submit user, isi pesan dulu sebelum aktifkan.</div>
+              </div>
+              <div style="display:flex;gap:10px;margin-bottom:10px;">
+                <div style="width:22px;height:22px;background:var(--primary);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;flex-shrink:0;margin-top:1px;">5</div>
+                <div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.6;">Panel Pengumuman: tulis pesan lalu klik Tampilkan → muncul banner kuning di halaman user. Klik Sembunyikan untuk hapus.</div>
+              </div>
+              <div style="display:flex;gap:10px;margin-bottom:0px;">
+                <div style="width:22px;height:22px;background:var(--primary);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;flex-shrink:0;margin-top:1px;">6</div>
+                <div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.6;">Toggle EmailJS: matikan jika tidak ingin notifikasi email dikirim saat ada klaim baru.</div>
+              </div>
+          </div>
+        </div>
+        <div style="background:white;border:1.5px solid var(--border);border-radius:18px;margin-bottom:14px;overflow:hidden;">
+          <div style="background:var(--bg);padding:14px 18px;border-bottom:1.5px solid var(--border);display:flex;align-items:center;gap:10px;">
+            <i class="fa-solid fa-clipboard-list ic-sky" style="font-size:18px;"></i>
+            <div style="font-size:14px;font-weight:900;color:var(--text);">Tab Daftar Klaim</div>
+          </div>
+          <div style="padding:14px 18px;">
+              <div style="display:flex;gap:10px;margin-bottom:10px;">
+                <div style="width:22px;height:22px;background:var(--primary);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;flex-shrink:0;margin-top:1px;">1</div>
+                <div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.6;">Menampilkan semua username yang berhasil klaim Robux.</div>
+              </div>
+              <div style="display:flex;gap:10px;margin-bottom:10px;">
+                <div style="width:22px;height:22px;background:var(--primary);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;flex-shrink:0;margin-top:1px;">2</div>
+                <div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.6;">Gunakan filter tanggal untuk menyaring data berdasarkan hari.</div>
+              </div>
+              <div style="display:flex;gap:10px;margin-bottom:10px;">
+                <div style="width:22px;height:22px;background:var(--primary);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;flex-shrink:0;margin-top:1px;">3</div>
+                <div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.6;">Klik ikon salin untuk menyalin username ke clipboard.</div>
+              </div>
+              <div style="display:flex;gap:10px;margin-bottom:10px;">
+                <div style="width:22px;height:22px;background:var(--primary);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;flex-shrink:0;margin-top:1px;">4</div>
+                <div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.6;">Tombol hapus (ikon tempat sampah) per baris untuk menghapus satu data.</div>
+              </div>
+              <div style="display:flex;gap:10px;margin-bottom:10px;">
+                <div style="width:22px;height:22px;background:var(--primary);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;flex-shrink:0;margin-top:1px;">5</div>
+                <div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.6;">Tombol Hapus Semua untuk menghapus seluruh data klaim — hati-hati, tidak bisa dikembalikan!</div>
+              </div>
+              <div style="display:flex;gap:10px;margin-bottom:0px;">
+                <div style="width:22px;height:22px;background:var(--primary);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;flex-shrink:0;margin-top:1px;">6</div>
+                <div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.6;">Catatan: Total Klaim Counter tidak berkurang saat data dihapus.</div>
+              </div>
+          </div>
+        </div>
+        <div style="background:white;border:1.5px solid var(--border);border-radius:18px;margin-bottom:14px;overflow:hidden;">
+          <div style="background:var(--bg);padding:14px 18px;border-bottom:1.5px solid var(--border);display:flex;align-items:center;gap:10px;">
+            <i class="fa-solid fa-paper-plane ic-indigo" style="font-size:18px;"></i>
+            <div style="font-size:14px;font-weight:900;color:var(--text);">Tab Permintaan</div>
+          </div>
+          <div style="padding:14px 18px;">
+              <div style="display:flex;gap:10px;margin-bottom:10px;">
+                <div style="width:22px;height:22px;background:var(--primary);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;flex-shrink:0;margin-top:1px;">1</div>
+                <div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.6;">Menampilkan permintaan klaim ulang dari user yang username-nya sudah pernah klaim.</div>
+              </div>
+              <div style="display:flex;gap:10px;margin-bottom:10px;">
+                <div style="width:22px;height:22px;background:var(--primary);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;flex-shrink:0;margin-top:1px;">2</div>
+                <div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.6;">Setiap permintaan berisi username, alasan, dan tanggal kirim.</div>
+              </div>
+              <div style="display:flex;gap:10px;margin-bottom:10px;">
+                <div style="width:22px;height:22px;background:var(--primary);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;flex-shrink:0;margin-top:1px;">3</div>
+                <div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.6;">Klik Setujui → user akan muncul kembali bisa klaim (tandai approved).</div>
+              </div>
+              <div style="display:flex;gap:10px;margin-bottom:10px;">
+                <div style="width:22px;height:22px;background:var(--primary);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;flex-shrink:0;margin-top:1px;">4</div>
+                <div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.6;">Klik Tolak → permintaan ditolak, user tidak bisa klaim ulang.</div>
+              </div>
+              <div style="display:flex;gap:10px;margin-bottom:10px;">
+                <div style="width:22px;height:22px;background:var(--primary);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;flex-shrink:0;margin-top:1px;">5</div>
+                <div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.6;">Bisa tambahkan alasan opsional saat setujui atau tolak.</div>
+              </div>
+              <div style="display:flex;gap:10px;margin-bottom:0px;">
+                <div style="width:22px;height:22px;background:var(--primary);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;flex-shrink:0;margin-top:1px;">6</div>
+                <div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.6;">Badge merah di sidebar menunjukkan jumlah permintaan pending.</div>
+              </div>
+          </div>
+        </div>
+        <div style="background:white;border:1.5px solid var(--border);border-radius:18px;margin-bottom:14px;overflow:hidden;">
+          <div style="background:var(--bg);padding:14px 18px;border-bottom:1.5px solid var(--border);display:flex;align-items:center;gap:10px;">
+            <i class="fa-solid fa-bolt ic-yellow" style="font-size:18px;"></i>
+            <div style="font-size:14px;font-weight:900;color:var(--text);">Tab Event</div>
+          </div>
+          <div style="padding:14px 18px;">
+              <div style="display:flex;gap:10px;margin-bottom:10px;">
+                <div style="width:22px;height:22px;background:var(--primary);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;flex-shrink:0;margin-top:1px;">1</div>
+                <div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.6;">Isi form: Robux Didapat, Harga Gamepass, Max Peserta (batas slot).</div>
+              </div>
+              <div style="display:flex;gap:10px;margin-bottom:10px;">
+                <div style="width:22px;height:22px;background:var(--primary);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;flex-shrink:0;margin-top:1px;">2</div>
+                <div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.6;">Tanggal & Waktu Berakhir bersifat opsional — kosongkan jika event tidak ada batas waktu.</div>
+              </div>
+              <div style="display:flex;gap:10px;margin-bottom:10px;">
+                <div style="width:22px;height:22px;background:var(--primary);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;flex-shrink:0;margin-top:1px;">3</div>
+                <div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.6;">Klik Aktifkan Event → event langsung muncul di halaman user dengan progress bar dan countdown.</div>
+              </div>
+              <div style="display:flex;gap:10px;margin-bottom:10px;">
+                <div style="width:22px;height:22px;background:var(--primary);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;flex-shrink:0;margin-top:1px;">4</div>
+                <div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.6;">Klik Matikan Event untuk menghentikan event kapan saja.</div>
+              </div>
+              <div style="display:flex;gap:10px;margin-bottom:10px;">
+                <div style="width:22px;height:22px;background:var(--primary);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;flex-shrink:0;margin-top:1px;">5</div>
+                <div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.6;">Tabel Peserta Event menampilkan semua user yang berhasil klaim event.</div>
+              </div>
+              <div style="display:flex;gap:10px;margin-bottom:0px;">
+                <div style="width:22px;height:22px;background:var(--primary);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;flex-shrink:0;margin-top:1px;">6</div>
+                <div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.6;">Tombol hapus per baris dan Hapus Semua tersedia untuk mengelola data peserta.</div>
+              </div>
+          </div>
+        </div>
+        <div style="background:white;border:1.5px solid var(--border);border-radius:18px;margin-bottom:14px;overflow:hidden;">
+          <div style="background:var(--bg);padding:14px 18px;border-bottom:1.5px solid var(--border);display:flex;align-items:center;gap:10px;">
+            <i class="fa-solid fa-rotate-right ic-red" style="font-size:18px;"></i>
+            <div style="font-size:14px;font-weight:900;color:var(--text);">Tab Reset Limit</div>
+          </div>
+          <div style="padding:14px 18px;">
+              <div style="display:flex;gap:10px;margin-bottom:10px;">
+                <div style="width:22px;height:22px;background:var(--primary);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;flex-shrink:0;margin-top:1px;">1</div>
+                <div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.6;">Menampilkan permintaan dari user yang kena rate limit (terlalu banyak percobaan dalam 1 jam).</div>
+              </div>
+              <div style="display:flex;gap:10px;margin-bottom:10px;">
+                <div style="width:22px;height:22px;background:var(--primary);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;flex-shrink:0;margin-top:1px;">2</div>
+                <div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.6;">User yang kena limit akan melihat tombol merah "Request Reset Limit" di halaman utama.</div>
+              </div>
+              <div style="display:flex;gap:10px;margin-bottom:10px;">
+                <div style="width:22px;height:22px;background:var(--primary);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;flex-shrink:0;margin-top:1px;">3</div>
+                <div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.6;">Setelah user kirim alasan, data masuk ke tab ini dengan status Pending.</div>
+              </div>
+              <div style="display:flex;gap:10px;margin-bottom:10px;">
+                <div style="width:22px;height:22px;background:var(--primary);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;flex-shrink:0;margin-top:1px;">4</div>
+                <div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.6;">Klik Setuju → permintaan disetujui. User bisa coba lagi setelah 1 jam berlalu.</div>
+              </div>
+              <div style="display:flex;gap:10px;margin-bottom:10px;">
+                <div style="width:22px;height:22px;background:var(--primary);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;flex-shrink:0;margin-top:1px;">5</div>
+                <div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.6;">Klik Tolak → permintaan ditolak.</div>
+              </div>
+              <div style="display:flex;gap:10px;margin-bottom:0px;">
+                <div style="width:22px;height:22px;background:var(--primary);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;flex-shrink:0;margin-top:1px;">6</div>
+                <div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.6;">Hapus data yang sudah selesai diproses agar tab tetap rapi.</div>
+              </div>
+          </div>
+        </div>
+        <div style="background:white;border:1.5px solid var(--border);border-radius:18px;margin-bottom:14px;overflow:hidden;">
+          <div style="background:var(--bg);padding:14px 18px;border-bottom:1.5px solid var(--border);display:flex;align-items:center;gap:10px;">
+            <i class="fa-solid fa-triangle-exclamation ic-red" style="font-size:18px;"></i>
+            <div style="font-size:14px;font-weight:900;color:var(--text);">Kesalahan Teknis (di Beranda)</div>
+          </div>
+          <div style="padding:14px 18px;">
+              <div style="display:flex;gap:10px;margin-bottom:10px;">
+                <div style="width:22px;height:22px;background:var(--primary);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;flex-shrink:0;margin-top:1px;">1</div>
+                <div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.6;">Fitur ini memblokir SEMUA submit dari user secara realtime.</div>
+              </div>
+              <div style="display:flex;gap:10px;margin-bottom:10px;">
+                <div style="width:22px;height:22px;background:var(--primary);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;flex-shrink:0;margin-top:1px;">2</div>
+                <div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.6;">Wajib isi pesan sebelum mengaktifkan — pesan tampil di banner merah di halaman user.</div>
+              </div>
+              <div style="display:flex;gap:10px;margin-bottom:10px;">
+                <div style="width:22px;height:22px;background:var(--primary);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;flex-shrink:0;margin-top:1px;">3</div>
+                <div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.6;">Setelah aktif, tombol Klaim dan tombol Event di halaman user langsung nonaktif.</div>
+              </div>
+              <div style="display:flex;gap:10px;margin-bottom:10px;">
+                <div style="width:22px;height:22px;background:var(--primary);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;flex-shrink:0;margin-top:1px;">4</div>
+                <div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.6;">Gunakan saat sedang maintenance, update, atau ada masalah teknis.</div>
+              </div>
+              <div style="display:flex;gap:10px;margin-bottom:10px;">
+                <div style="width:22px;height:22px;background:var(--primary);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;flex-shrink:0;margin-top:1px;">5</div>
+                <div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.6;">Klik Nonaktifkan untuk memulihkan akses user kapan saja.</div>
+              </div>
+              <div style="display:flex;gap:10px;margin-bottom:0px;">
+                <div style="width:22px;height:22px;background:var(--primary);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;flex-shrink:0;margin-top:1px;">6</div>
+                <div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.6;">Perubahan bersifat realtime — semua user langsung terpengaruh tanpa perlu refresh.</div>
+              </div>
+          </div>
+        </div>
+
+      <div style="background:linear-gradient(135deg,#f0fff6,#e8fff2);border:2px solid var(--border);border-radius:16px;padding:16px 18px;margin-top:4px;">
+        <div style="font-size:13px;font-weight:800;color:var(--text);margin-bottom:6px;"><i class="fa-solid fa-lightbulb ic-yellow"></i> Tips Penting</div>
+        <ul style="font-size:12px;font-weight:700;color:var(--muted);line-height:1.9;padding-left:18px;margin:0;">
+          <li>Selalu logout setelah selesai menggunakan dashboard</li>
+          <li>Jangan bagikan password admin ke siapapun</li>
+          <li>Hapus data klaim secara berkala agar dashboard tetap cepat</li>
+          <li>Aktifkan Kesalahan Teknis dulu sebelum melakukan update besar</li>
+          <li>Counter Total Klaim tidak otomatis berubah saat data dihapus — ini disengaja</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- TAB LOG AKTIVITAS -->
+    <div id="content-log" class="tab-content hidden table-card">
+      <div class="table-header">
+        <div class="table-title"><i class="fa-solid fa-scroll ic-slate"></i> Log Aktivitas Admin</div>
+        <button onclick="window._hapusSemuaLog()" style="padding:7px 14px;background:#fff0f0;color:#ff4757;border:1.5px solid #ffd0d0;border-radius:10px;font-family:'Nunito',sans-serif;font-size:12px;font-weight:800;cursor:pointer;"><i class="fa-solid fa-trash ic-red"></i> Hapus Semua</button>
+      </div>
+      <div style="padding:8px 16px 4px;font-size:12px;font-weight:700;color:var(--muted);">Riwayat semua aksi yang dilakukan di dashboard ini.</div>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);">
+            <th style="padding:10px 12px;text-align:left;font-weight:900;color:var(--muted);">Aksi</th>
+            <th style="padding:10px 12px;text-align:left;font-weight:900;color:var(--muted);">Detail</th>
+            <th style="padding:10px 12px;text-align:left;font-weight:900;color:var(--muted);">Waktu</th>
+          </tr></thead>
+          <tbody id="logTbody"><tr><td colspan="3" style="text-align:center;padding:24px;color:var(--muted);font-weight:700;">Memuat...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TAB BLACKLIST -->
+    <div id="content-blacklist" class="tab-content hidden table-card">
+      <div class="table-header">
+        <div class="table-title"><i class="fa-solid fa-ban ic-red"></i> Blacklist Username</div>
+      </div>
+      <div style="padding:14px 16px;border-bottom:1.5px solid var(--border);">
+        <div style="font-size:13px;font-weight:800;color:var(--text);margin-bottom:10px;"><i class="fa-solid fa-plus ic-green"></i> Tambah ke Blacklist</div>
+        <div style="display:flex;gap:8px;">
+          <input type="text" id="blacklistInput" placeholder="Username Roblox..." maxlength="20"
+            style="flex:1;padding:10px 14px;background:var(--bg);border:2px solid var(--border);border-radius:12px;font-family:'Nunito',sans-serif;font-size:14px;font-weight:700;color:var(--text);outline:none;"
+            onkeydown="if(event.key==='Enter')window._tambahBlacklist()" />
+          <input type="text" id="blacklistAlasan" placeholder="Alasan (opsional)..."
+            style="flex:1;padding:10px 14px;background:var(--bg);border:2px solid var(--border);border-radius:12px;font-family:'Nunito',sans-serif;font-size:14px;font-weight:700;color:var(--text);outline:none;" />
+          <button onclick="window._tambahBlacklist()" style="padding:10px 16px;background:linear-gradient(135deg,#ef4444,#c0392b);color:white;border:none;border-radius:12px;font-family:'Nunito',sans-serif;font-size:13px;font-weight:800;cursor:pointer;white-space:nowrap;"><i class="fa-solid fa-ban"></i> Blacklist</button>
+        </div>
+      </div>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);">
+            <th style="padding:10px 12px;text-align:left;font-weight:900;color:var(--muted);">Username</th>
+            <th style="padding:10px 12px;text-align:left;font-weight:900;color:var(--muted);">Alasan</th>
+            <th style="padding:10px 12px;text-align:left;font-weight:900;color:var(--muted);">Tanggal</th>
+            <th style="padding:10px 12px;text-align:left;font-weight:900;color:var(--muted);">Aksi</th>
+          </tr></thead>
+          <tbody id="blacklistTbody"><tr><td colspan="4" style="text-align:center;padding:24px;color:var(--muted);font-weight:700;">Memuat...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TAB PESAN MASUK -->
+    <div id="content-pesan" class="tab-content hidden table-card">
+      <div class="table-header">
+        <div class="table-title"><i class="fa-solid fa-envelope ic-indigo"></i> Pesan Masuk dari User</div>
+        <button onclick="window._hapusSemuaPesan()" style="padding:7px 14px;background:#fff0f0;color:#ff4757;border:1.5px solid #ffd0d0;border-radius:10px;font-family:'Nunito',sans-serif;font-size:12px;font-weight:800;cursor:pointer;"><i class="fa-solid fa-trash ic-red"></i> Hapus Semua</button>
+      </div>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);">
+            <th style="padding:10px 12px;text-align:left;font-weight:900;color:var(--muted);">Username</th>
+            <th style="padding:10px 12px;text-align:left;font-weight:900;color:var(--muted);">Pesan</th>
+            <th style="padding:10px 12px;text-align:left;font-weight:900;color:var(--muted);">Waktu</th>
+            <th style="padding:10px 12px;text-align:left;font-weight:900;color:var(--muted);">Aksi</th>
+          </tr></thead>
+          <tbody id="pesanTbody"><tr><td colspan="4" style="text-align:center;padding:24px;color:var(--muted);font-weight:700;">Memuat...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TAB BROADCAST -->
+    <div id="content-broadcast" class="tab-content hidden">
+      <div class="table-card" style="padding:20px;margin-bottom:16px;">
+        <div style="font-size:1rem;font-weight:900;color:var(--text);margin-bottom:4px;"><i class="fa-solid fa-bullhorn ic-orange"></i> Kirim Broadcast ke Semua User</div>
+        <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:16px;">Pesan akan muncul sebagai banner di halaman utama</div>
+        <div style="margin-bottom:12px;">
+          <label style="font-size:12px;font-weight:800;color:var(--muted);display:block;margin-bottom:6px;">Kategori</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <label style="display:flex;align-items:center;gap:6px;background:var(--bg);border:1.5px solid var(--border);border-radius:10px;padding:8px 12px;cursor:pointer;font-size:13px;font-weight:700;">
+              <input type="radio" name="bcKategori" value="info" checked style="accent-color:var(--primary);"> <i class="fa-solid fa-circle-info ic-blue"></i> Info
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;background:var(--bg);border:1.5px solid var(--border);border-radius:10px;padding:8px 12px;cursor:pointer;font-size:13px;font-weight:700;">
+              <input type="radio" name="bcKategori" value="peringatan" style="accent-color:#f59e0b;"> <i class="fa-solid fa-triangle-exclamation ic-amber"></i> Peringatan
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;background:var(--bg);border:1.5px solid var(--border);border-radius:10px;padding:8px 12px;cursor:pointer;font-size:13px;font-weight:700;">
+              <input type="radio" name="bcKategori" value="darurat" style="accent-color:#ef4444;"> <i class="fa-solid fa-siren ic-red"></i> Darurat
+            </label>
+          </div>
+        </div>
+        <textarea id="broadcastPesan" placeholder="Tulis pesan broadcast di sini..."
+          style="width:100%;padding:12px 14px;background:var(--bg);border:2px solid var(--border);border-radius:12px;font-family:'Nunito',sans-serif;font-size:14px;font-weight:700;color:var(--text);outline:none;resize:none;height:90px;margin-bottom:12px;transition:border-color .2s;"
+          onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='var(--border)'"></textarea>
+        <div style="display:flex;gap:8px;">
+          <button onclick="window._kirimBroadcast()" style="flex:1;padding:11px;background:linear-gradient(135deg,#f97316,#ea580c);color:white;border:none;border-radius:12px;font-family:'Nunito',sans-serif;font-size:14px;font-weight:800;cursor:pointer;"><i class="fa-solid fa-bullhorn"></i> Kirim Broadcast</button>
+          <button onclick="window._hapusBroadcast()" style="padding:11px 16px;background:var(--bg);color:var(--muted);border:1.5px solid var(--border);border-radius:12px;font-family:'Nunito',sans-serif;font-size:13px;font-weight:800;cursor:pointer;"><i class="fa-solid fa-eye-slash ic-slate"></i> Sembunyikan</button>
+        </div>
+        <div id="broadcastStatus" style="font-size:12px;font-weight:700;margin-top:8px;"></div>
+      </div>
+      <div class="table-card" style="padding:20px;">
+        <div style="font-size:13px;font-weight:900;color:var(--text);margin-bottom:12px;"><i class="fa-solid fa-clock-rotate-left ic-slate"></i> Riwayat Broadcast</div>
+        <div id="broadcastRiwayat" style="font-size:13px;font-weight:700;color:var(--muted);text-align:center;padding:16px;">Memuat...</div>
+      </div>
+    </div>
+
+    <!-- TAB PENGATURAN -->
+    <div id="content-pengaturan" class="tab-content hidden">
+      <div class="table-card" style="padding:20px;margin-bottom:16px;">
+        <div style="font-size:1rem;font-weight:900;color:var(--text);margin-bottom:4px;"><i class="fa-solid fa-gamepad ic-amber"></i> Harga Klaim Normal</div>
+        <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:16px;">Harga gamepass dan jumlah Robux untuk klaim biasa (non-event)</div>
+        <div class="field-grid" style="margin-bottom:14px;">
+          <div class="form-field">
+            <label>Harga Gamepass (Robux)</label>
+            <input type="number" id="setHargaGamepass" placeholder="72" min="1" />
+          </div>
+          <div class="form-field">
+            <label>Robux yang Didapat User</label>
+            <input type="number" id="setRobuxNormal" placeholder="50" min="1" />
+          </div>
+        </div>
+        <button onclick="window._simpanHargaNormal()" style="padding:11px 20px;background:linear-gradient(135deg,var(--primary),var(--primary2));color:white;border:none;border-radius:12px;font-family:'Nunito',sans-serif;font-size:14px;font-weight:800;cursor:pointer;"><i class="fa-solid fa-floppy-disk"></i> Simpan Harga</button>
+        <div id="hargaStatus" style="font-size:12px;font-weight:700;margin-top:8px;"></div>
+      </div>
+      <div class="table-card" style="padding:20px;margin-bottom:16px;">
+        <div style="font-size:1rem;font-weight:900;color:var(--text);margin-bottom:4px;"><i class="fa-solid fa-clock ic-amber"></i> Rate Limit</div>
+        <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:16px;">Batas maksimal percobaan submit per jam per perangkat</div>
+        <div class="field-grid" style="margin-bottom:14px;">
+          <div class="form-field">
+            <label>Maks. Percobaan per Jam</label>
+            <input type="number" id="setRateLimit" placeholder="3" min="1" max="10" />
+          </div>
+        </div>
+        <button onclick="window._simpanRateLimit()" style="padding:11px 20px;background:linear-gradient(135deg,var(--primary),var(--primary2));color:white;border:none;border-radius:12px;font-family:'Nunito',sans-serif;font-size:14px;font-weight:800;cursor:pointer;"><i class="fa-solid fa-floppy-disk"></i> Simpan</button>
+        <div id="rateLimitStatus" style="font-size:12px;font-weight:700;margin-top:8px;"></div>
+      </div>
+      <div class="table-card" style="padding:20px;">
+        <div style="font-size:1rem;font-weight:900;color:var(--text);margin-bottom:4px;"><i class="fa-solid fa-lock ic-slate"></i> Ganti Password Admin</div>
+        <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:16px;">Password baru akan langsung berlaku</div>
+        <div class="field-grid" style="margin-bottom:14px;">
+          <div class="form-field">
+            <label>Password Baru</label>
+            <input type="password" id="setPasswordBaru" placeholder="Password baru..." />
+          </div>
+          <div class="form-field">
+            <label>Konfirmasi Password</label>
+            <input type="password" id="setPasswordKonfirm" placeholder="Ulangi password..." />
+          </div>
+        </div>
+        <button onclick="window._gantiPassword()" style="padding:11px 20px;background:linear-gradient(135deg,#6c5ce7,#4834d4);color:white;border:none;border-radius:12px;font-family:'Nunito',sans-serif;font-size:14px;font-weight:800;cursor:pointer;"><i class="fa-solid fa-key"></i> Ganti Password</button>
+        <div id="passwordStatus" style="font-size:12px;font-weight:700;margin-top:8px;"></div>
+      </div>
+    </div>
+
+    <!-- TAB ANALITIK -->
+    <div id="content-analitik" class="tab-content hidden">
+      <div class="chart-card" style="margin-bottom:16px;">
+        <div class="chart-title"><i class="fa-solid fa-chart-line ic-violet"></i> Klaim per Jam (Hari Ini)</div>
+        <div class="chart-wrap"><canvas id="chartPerJam"></canvas></div>
+      </div>
+      <div class="chart-card" style="margin-bottom:16px;">
+        <div class="chart-title"><i class="fa-solid fa-chart-bar ic-blue"></i> Klaim per Minggu (4 Minggu Terakhir)</div>
+        <div class="chart-wrap"><canvas id="chartPerMinggu"></canvas></div>
+      </div>
+      <div class="table-card" style="padding:20px;">
+        <div style="font-size:1rem;font-weight:900;color:var(--text);margin-bottom:14px;"><i class="fa-solid fa-trophy ic-gold"></i> Top 10 Username Terbanyak Klaim</div>
+        <div id="topUsernameList" style="font-size:13px;font-weight:700;color:var(--muted);">Memuat...</div>
       </div>
     </div>
 
