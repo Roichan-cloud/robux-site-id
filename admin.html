@@ -553,7 +553,7 @@ window._loadEvent = async () => {
     snap.forEach(d => docs.push({ id: d.id, ...d.data() }));
     const tbody = document.getElementById('tbodyEvent');
     tbody.innerHTML = docs.length === 0
-      ? `<tr><td colspan="3" class="empty-row">Belum ada peserta event 😊</td></tr>`
+      ? `<tr><td colspan="4" class="empty-row">Belum ada peserta event 😊</td></tr>`
       : docs.map(d => `
         <tr>
           <td>
@@ -564,6 +564,7 @@ window._loadEvent = async () => {
           </td>
           <td><span class="badge-orange"><i class="fa-solid fa-bolt ic-yellow"></i> ${d.robux} Robux</span></td>
           <td style="font-size:11px;color:var(--muted);">${d.eventId||'—'}</td>
+          <td><button onclick="window._hapusEventPeserta('${d.id}')" style="padding:5px 10px;background:#fff0f0;color:#ff4757;border:1.5px solid #ffd0d0;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer;"><i class="fa-solid fa-trash"></i></button></td>
         </tr>`).join('');
   } catch(e) {}
 };
@@ -613,6 +614,23 @@ window._matikanEvent = async () => {
   const ok = await _confirm('⛔', 'Matikan Event', 'Matikan event dadakan sekarang?', 'Ya, Matikan', true);
   if (!ok) return;
   await setDoc(doc(db, "config", "event"), { active: false }, { merge: true });
+  window._loadEvent();
+};
+
+window._hapusEventPeserta = async (id) => {
+  const ok = await _confirm('🗑️', 'Hapus Peserta?', 'Hapus data peserta event ini?', 'Hapus', true);
+  if (!ok) return;
+  const { deleteDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+  await deleteDoc(doc(db, "event_klaim", id));
+  window._loadEvent();
+};
+
+window._hapusSemuaEvent = async () => {
+  const ok = await _confirm('🗑️', 'Hapus Semua Peserta?', 'Semua data peserta event akan dihapus permanen!', 'Hapus Semua', true);
+  if (!ok) return;
+  const { deleteDoc, getDocs: gd, collection: col, query: q2 } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+  const snap = await gd(q2(col(db, "event_klaim")));
+  await Promise.all(snap.docs.map(d => deleteDoc(d.ref)));
   window._loadEvent();
 };
 
@@ -743,6 +761,14 @@ window._hapusRL = async (id) => {
   if (!ok) return;
   const { deleteDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
   await deleteDoc(doc(db, "permintaan_rl", id));
+};
+
+window._hapusSemuaRL = async () => {
+  const ok = await _confirm('🗑️', 'Hapus Semua?', 'Semua data request reset limit akan dihapus permanen!', 'Hapus Semua', true);
+  if (!ok) return;
+  const { deleteDoc, getDocs: gd, collection: col, query: q2 } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+  const snap = await gd(q2(col(db, "permintaan_rl")));
+  await Promise.all(snap.docs.map(d => deleteDoc(d.ref)));
 };
 
 // ===== PENGUMUMAN ADMIN =====
@@ -885,8 +911,26 @@ window._switchTab = (tab) => {
   .btn-logout:hover { background: #ffe0e0; }
 
   /* ===== CONTENT ===== */
-  .content { max-width: 1000px; margin: 0 auto; padding: 24px 16px 60px; position: relative; z-index: 1; }
+  .content { max-width: 1200px; margin: 0 auto; padding: 24px 16px 60px; position: relative; z-index: 1; }
 
+  /* ===== SIDEBAR LAYOUT ===== */
+  .dashboard-layout { display: flex; gap: 20px; align-items: flex-start; }
+  .sidebar { width: 200px; flex-shrink: 0; background: var(--white); border: 1.5px solid var(--border); border-radius: 20px; padding: 12px; position: sticky; top: 20px; }
+  .sidebar-title { font-size: 10px; font-weight: 900; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; padding: 6px 10px 10px; }
+  .tab-btn { display: flex; align-items: center; gap: 8px; width: 100%; padding: 10px 12px; border-radius: 12px; border: none; background: transparent; color: var(--muted); font-family: 'Nunito', sans-serif; font-size: 13px; font-weight: 800; cursor: pointer; transition: all .2s; position: relative; text-align: left; margin-bottom: 4px; }
+  .tab-btn:hover { background: var(--bg); color: var(--text); }
+  .tab-btn.active { background: linear-gradient(135deg,var(--primary),var(--primary2)); color: white; box-shadow: 0 4px 14px rgba(0,200,83,0.35); }
+  .tab-btn.active .ic-sky, .tab-btn.active .ic-indigo, .tab-btn.active .ic-yellow,
+  .tab-btn.active .ic-red, .tab-btn.active .ic-amber { color: white !important; }
+  .tab-main { flex: 1; min-width: 0; }
+  .tab-content { display: block; }
+  .tab-content.hidden { display: none !important; }
+  @media(max-width: 700px) {
+    .dashboard-layout { flex-direction: column; }
+    .sidebar { width: 100%; position: static; display: flex; flex-wrap: wrap; gap: 6px; padding: 10px; }
+    .sidebar-title { display: none; }
+    .tab-btn { width: auto; flex: 1; min-width: 0; justify-content: center; font-size: 11px; padding: 8px 6px; }
+  }
   /* ===== STATS ===== */
   .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 20px; }
   .stat-card { background: var(--white); border: 1.5px solid var(--border); border-radius: 18px; padding: 20px; text-align: center; box-shadow: var(--shadow); }
@@ -1003,7 +1047,7 @@ window._switchTab = (tab) => {
   .modal-btn-cancel:hover { background: var(--white); }
 
   .hidden { display: none !important; }
-  @media(max-width:560px) { .stats-grid { grid-template-columns: 1fr 1fr; } .stat-num { font-size: 1.6rem; } .field-grid-3 { grid-template-columns: 1fr 1fr; } .tabs { gap: 6px; } }
+  @media(max-width:560px) { .stats-grid { grid-template-columns: 1fr 1fr; } .stat-num { font-size: 1.6rem; } .field-grid-3 { grid-template-columns: 1fr 1fr; } }
   @media(max-width:400px) { .stats-grid { grid-template-columns: 1fr; } }
 </style>
 </head>
@@ -1180,19 +1224,30 @@ window._switchTab = (tab) => {
       </label>
     </div>
 
-    <!-- TABS -->
-    <div class="tabs">
-      <button class="tab-btn active" id="tab-klaim" onclick="window._switchTab('klaim')"><i class="fa-solid fa-clipboard-list ic-sky"></i> Daftar Klaim</button>
-      <button class="tab-btn" id="tab-permintaan" onclick="window._switchTab('permintaan')">
-        <i class="fa-solid fa-paper-plane ic-indigo"></i> Permintaan
-        <span class="req-badge" id="reqBadge">0</span>
-      </button>
-      <button class="tab-btn" id="tab-event" onclick="window._switchTab('event')"><i class="fa-solid fa-bolt ic-yellow"></i> Event</button>
-      <button class="tab-btn" id="tab-ratelimit" onclick="window._switchTab('ratelimit')" style="position:relative;">
-        <i class="fa-solid fa-rotate-right ic-red"></i> Request Reset Limit
-        <span id="rlBadge" style="display:none;position:absolute;top:-6px;right:-6px;background:#ef4444;color:white;font-size:10px;font-weight:900;min-width:18px;height:18px;border-radius:50%;align-items:center;justify-content:center;padding:0 4px;">0</span>
-      </button>
-    </div>
+    <!-- SIDEBAR + KONTEN UTAMA -->
+    <div class="dashboard-layout">
+
+      <!-- SIDEBAR NAVIGASI -->
+      <div class="sidebar">
+        <div class="sidebar-title">Menu</div>
+        <button class="tab-btn active" id="tab-klaim" onclick="window._switchTab('klaim')">
+          <i class="fa-solid fa-clipboard-list ic-sky"></i> Daftar Klaim
+        </button>
+        <button class="tab-btn" id="tab-permintaan" onclick="window._switchTab('permintaan')" style="position:relative;">
+          <i class="fa-solid fa-paper-plane ic-indigo"></i> Permintaan
+          <span class="req-badge" id="reqBadge" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);">0</span>
+        </button>
+        <button class="tab-btn" id="tab-event" onclick="window._switchTab('event')">
+          <i class="fa-solid fa-bolt ic-yellow"></i> Event
+        </button>
+        <button class="tab-btn" id="tab-ratelimit" onclick="window._switchTab('ratelimit')" style="position:relative;">
+          <i class="fa-solid fa-rotate-right ic-red"></i> Reset Limit
+          <span id="rlBadge" style="display:none;position:absolute;right:8px;top:50%;transform:translateY(-50%);background:#ef4444;color:white;font-size:10px;font-weight:900;min-width:18px;height:18px;border-radius:50%;align-items:center;justify-content:center;padding:0 4px;">0</span>
+        </button>
+      </div>
+
+      <!-- KONTEN TAB -->
+      <div class="tab-main">
 
     <!-- TAB KLAIM -->
     <div id="content-klaim" class="tab-content table-card">
@@ -1282,10 +1337,13 @@ window._switchTab = (tab) => {
       <div class="table-card">
         <div class="table-header">
           <div class="table-title"><i class="fa-solid fa-bolt ic-yellow"></i> Peserta Event</div>
-          <button class="btn-refresh" onclick="window._loadEvent()"><i class="fa-solid fa-rotate ic-slate"></i> Refresh</button>
+          <div style="display:flex;gap:8px;">
+            <button class="btn-refresh" onclick="window._loadEvent()"><i class="fa-solid fa-rotate ic-slate"></i> Refresh</button>
+            <button onclick="window._hapusSemuaEvent()" style="padding:7px 14px;background:#fff0f0;color:#ff4757;border:1.5px solid #ffd0d0;border-radius:10px;font-family:'Nunito',sans-serif;font-size:12px;font-weight:800;cursor:pointer;"><i class="fa-solid fa-trash ic-red"></i> Hapus Semua</button>
+          </div>
         </div>
         <table>
-          <thead><tr><th>Username</th><th>Robux</th><th>Event ID</th></tr></thead>
+          <thead><tr><th>Username</th><th>Robux</th><th>Event ID</th><th>Aksi</th></tr></thead>
           <tbody id="tbodyEvent"></tbody>
         </table>
       </div>
@@ -1295,6 +1353,7 @@ window._switchTab = (tab) => {
     <div id="content-ratelimit" class="tab-content hidden table-card">
       <div class="table-header">
         <div class="table-title"><i class="fa-solid fa-rotate-right ic-red"></i> Request Reset Limit</div>
+        <button onclick="window._hapusSemuaRL()" style="padding:7px 14px;background:#fff0f0;color:#ff4757;border:1.5px solid #ffd0d0;border-radius:10px;font-family:'Nunito',sans-serif;font-size:12px;font-weight:800;cursor:pointer;"><i class="fa-solid fa-trash ic-red"></i> Hapus Semua</button>
       </div>
       <div style="padding:10px 16px 4px;font-size:12px;font-weight:700;color:var(--muted);">
         User yang melebihi batas percobaan dan mengajukan request reset limit.
@@ -1316,6 +1375,9 @@ window._switchTab = (tab) => {
         </table>
       </div>
     </div>
+
+      </div> <!-- end tab-main -->
+    </div> <!-- end dashboard-layout -->
 
   </div>
 </div>
