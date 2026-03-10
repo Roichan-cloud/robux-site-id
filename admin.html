@@ -891,6 +891,7 @@ window._switchTab = (tab) => {
     document.getElementById('evDeadline').min = now;
   }
   if (tab === 'analitik') window._loadAnalitik();
+  if (tab === 'referral') window._loadReferral();
   if (tab === 'log') window._loadLog();
   if (tab === 'blacklist') window._loadBlacklist();
   if (tab === 'whitelist') window._loadWhitelist();
@@ -990,7 +991,38 @@ window._hapusSemuaWhitelist = async () => {
   _addLog('Hapus Semua Whitelist', `${snap.docs.length} data dihapus`);
 };
 
-// ===== PESAN MASUK =====
+// ===== REFERRAL ADMIN =====
+window._loadReferral = async () => {
+  const tbody = document.getElementById('referralTbody');
+  tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--muted);font-weight:700;"><i class="fa-solid fa-spinner fa-spin"></i> Memuat...</td></tr>';
+  try {
+    const snap = await getDocs(query(collection(db, 'referral'), orderBy('total', 'desc')));
+    if (snap.empty) { tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--muted);font-weight:700;">Belum ada data referral</td></tr>'; return; }
+    const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const totalKlaim = docs.reduce((s, d) => s + (d.total || 0), 0);
+    const top = docs[0];
+    document.getElementById('refStatTotal').textContent = docs.length;
+    document.getElementById('refStatKlaim').textContent = totalKlaim;
+    document.getElementById('refStatTop').textContent = top ? `${top.username} (${top.total}x)` : '—';
+    tbody.innerHTML = docs.map((d, i) => `
+      <tr style="border-bottom:1px solid var(--border);">
+        <td style="padding:10px 12px;font-weight:800;color:var(--muted);">${i+1}</td>
+        <td style="padding:10px 12px;font-weight:800;">${d.username||'—'}</td>
+        <td style="padding:10px 12px;font-weight:900;color:var(--primary);letter-spacing:2px;">${d.code||'—'}</td>
+        <td style="padding:10px 12px;font-weight:800;">${d.total||0}x</td>
+        <td style="padding:10px 12px;font-weight:800;color:#f59e0b;">${d.poin||0} poin</td>
+        <td style="padding:10px 12px;">
+          <button onclick="window._resetReferralPoin('${d.id}','${d.username}')" style="padding:5px 10px;background:#fff0f0;color:#ef4444;border:1.5px solid #ffd0d0;border-radius:8px;font-size:11px;font-weight:800;cursor:pointer;font-family:'Nunito',sans-serif;"><i class="fa-solid fa-rotate-left"></i> Reset Poin</button>
+        </td>
+      </tr>`).join('');
+  } catch(e) { tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:24px;color:#ef4444;font-weight:700;">${e.message}</td></tr>`; }
+};
+window._resetReferralPoin = async (id, username) => {
+  if (!await _confirm(`Reset poin referral "${username}"?`)) return;
+  await updateDoc(doc(db, 'referral', id), { poin: 0 });
+  _addLog('Reset Poin Referral', `Username: ${username}`);
+  window._loadReferral();
+};
 window._loadPesan = () => {
   const tbody = document.getElementById('pesanTbody');
   const badge = document.getElementById('pesanBadge');
@@ -1460,6 +1492,7 @@ window._loadAnalitik = async () => {
         <div class="sidebar-title" style="padding-top:4px;">Konfigurasi</div>
         <button class="tab-btn" id="tab-pengaturan" onclick="window._switchTab('pengaturan')"><i class="fa-solid fa-gear ic-slate"></i> Pengaturan</button>
         <button class="tab-btn" id="tab-analitik" onclick="window._switchTab('analitik')"><i class="fa-solid fa-chart-line ic-violet"></i> Analitik</button>
+        <button class="tab-btn" id="tab-referral" onclick="window._switchTab('referral')"><i class="fa-solid fa-ticket ic-indigo"></i> Referral</button>
         <div class="sidebar-divider"></div>
         <button class="tab-btn" id="tab-bantuan" onclick="window._switchTab('bantuan')"><i class="fa-solid fa-circle-question ic-blue"></i> Bantuan</button>
     </div>
@@ -1738,6 +1771,41 @@ window._loadAnalitik = async () => {
 
       <div style="background:var(--bg);border:1.5px solid var(--border);border-radius:16px;padding:16px 18px;text-align:center;">
         <div style="font-size:13px;font-weight:700;color:var(--muted);">Mulai dari mana? Klik <strong style="color:var(--primary);">Beranda</strong> untuk melihat statistik, atau <strong style="color:#3b82f6;">Bantuan</strong> untuk tutorial lengkap.</div>
+      </div>
+    </div>
+
+    <!-- TAB REFERRAL -->
+    <div id="content-referral" class="tab-content hidden table-card">
+      <div class="table-header">
+        <div class="table-title"><i class="fa-solid fa-ticket ic-indigo"></i> Data Referral</div>
+        <button onclick="window._loadReferral()" style="padding:7px 14px;background:var(--bg);border:1.5px solid var(--border);border-radius:10px;font-family:'Nunito',sans-serif;font-size:12px;font-weight:800;cursor:pointer;"><i class="fa-solid fa-rotate"></i> Refresh</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px;" id="referralStats">
+        <div style="background:var(--bg);border:1.5px solid var(--border);border-radius:14px;padding:14px;text-align:center;">
+          <div style="font-size:22px;font-weight:900;color:var(--primary);" id="refStatTotal">—</div>
+          <div style="font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;">Total Referrer</div>
+        </div>
+        <div style="background:var(--bg);border:1.5px solid var(--border);border-radius:14px;padding:14px;text-align:center;">
+          <div style="font-size:22px;font-weight:900;color:#3b82f6;" id="refStatKlaim">—</div>
+          <div style="font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;">Total Referral Klaim</div>
+        </div>
+        <div style="background:var(--bg);border:1.5px solid var(--border);border-radius:14px;padding:14px;text-align:center;">
+          <div style="font-size:22px;font-weight:900;color:#f59e0b;" id="refStatTop">—</div>
+          <div style="font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;">Referral Terbanyak</div>
+        </div>
+      </div>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead><tr style="background:var(--bg);">
+            <th style="padding:10px 12px;text-align:left;font-weight:900;color:var(--muted);">#</th>
+            <th style="padding:10px 12px;text-align:left;font-weight:900;color:var(--muted);">Username</th>
+            <th style="padding:10px 12px;text-align:left;font-weight:900;color:var(--muted);">Kode</th>
+            <th style="padding:10px 12px;text-align:left;font-weight:900;color:var(--muted);">Total</th>
+            <th style="padding:10px 12px;text-align:left;font-weight:900;color:var(--muted);">Poin</th>
+            <th style="padding:10px 12px;text-align:left;font-weight:900;color:var(--muted);">Aksi</th>
+          </tr></thead>
+          <tbody id="referralTbody"><tr><td colspan="6" style="text-align:center;padding:24px;color:var(--muted);font-weight:700;">Memuat...</td></tr></tbody>
+        </table>
       </div>
     </div>
 
