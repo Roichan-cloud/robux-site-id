@@ -307,6 +307,7 @@ window._deleteKlaim = async (id) => {
   const ok = await _confirm('🗑️', 'Hapus Data', 'Hapus data klaim ini?', 'Ya, Hapus', true);
   if (!ok) return;
   await deleteDoc(doc(db, "klaim", id));
+  _addLog('Hapus Klaim', `ID: ${id}`);
 };
 
 window._copyUsername = (username, btn) => {
@@ -410,6 +411,7 @@ window._hapusSemuaKlaim = async () => {
     snap.forEach(d => dels.push(deleteDoc(doc(db, "klaim", d.id))));
     await Promise.all(dels);
     await _alert('✅', 'Berhasil', `${dels.length} data klaim berhasil dihapus!`);
+    _addLog('Hapus Semua Klaim', `${dels.length} data dihapus`);
     allKlaims = [];
     klaimPage = 1;
     renderKlaimTable(1);
@@ -515,8 +517,10 @@ window._submitAlasan = async () => {
       snap.forEach(async d => {
         if (d.data().usernameLower === username.toLowerCase()) await deleteDoc(doc(db, "klaim", d.id));
       });
+      _addLog('Setujui Permintaan', `Username: ${username}${alasan ? ' · '+alasan : ''}`);
     } else {
       await updateDoc(doc(db, "permintaan", id), { status: 'rejected', ...updateData });
+      _addLog('Tolak Permintaan', `Username: ${username}${alasan ? ' · '+alasan : ''}`);
     }
   } catch(e) { await _alert('❌', 'Gagal', e.message); }
 };
@@ -608,6 +612,7 @@ window._aktifkanEvent = async () => {
   await setDoc(doc(db, "config", "event"), data);
   const deadlineStr = deadlineVal ? ` · Berakhir: ${new Date(deadlineVal).toLocaleString('id-ID')}` : '';
   await _alert('🔥', 'Event Aktif!', `Event dadakan berhasil diaktifkan!${deadlineStr}`);
+  _addLog('Aktifkan Event', `Robux: ${robux} · Gamepass: ${gamepass} · Max: ${max} peserta`);
   window._loadEvent();
 };
 
@@ -615,6 +620,7 @@ window._matikanEvent = async () => {
   const ok = await _confirm('⛔', 'Matikan Event', 'Matikan event dadakan sekarang?', 'Ya, Matikan', true);
   if (!ok) return;
   await setDoc(doc(db, "config", "event"), { active: false }, { merge: true });
+  _addLog('Matikan Event', '');
   window._loadEvent();
 };
 
@@ -623,6 +629,7 @@ window._hapusEventPeserta = async (id) => {
   if (!ok) return;
   const { deleteDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
   await deleteDoc(doc(db, "event_klaim", id));
+  _addLog('Hapus Peserta Event', `ID: ${id}`);
   window._loadEvent();
 };
 
@@ -632,6 +639,7 @@ window._hapusSemuaEvent = async () => {
   const { deleteDoc, getDocs: gd, collection: col, query: q2 } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
   const snap = await gd(q2(col(db, "event_klaim")));
   await Promise.all(snap.docs.map(d => deleteDoc(d.ref)));
+  _addLog('Hapus Semua Peserta Event', `${snap.docs.length} peserta dihapus`);
   window._loadEvent();
 };
 
@@ -660,6 +668,7 @@ window._aktifkanMaintenance = async () => {
   if (!ok) return;
   try {
     await setDoc(doc(db, "config", "maintenance"), { aktif: true, pesan }, { merge: true });
+    _addLog('Aktifkan Maintenance', pesan.slice(0,60));
     document.getElementById('maintenanceSaveStatus').innerHTML = '<i class="fa-solid fa-circle-check ic-green"></i> Maintenance diaktifkan!';
     document.getElementById('toggleMaintenance').checked = true;
     setTimeout(() => { document.getElementById('maintenanceSaveStatus').innerHTML = ''; }, 3000);
@@ -669,6 +678,7 @@ window._aktifkanMaintenance = async () => {
 window._nonaktifkanMaintenance = async () => {
   try {
     await setDoc(doc(db, "config", "maintenance"), { aktif: false }, { merge: true });
+    _addLog('Nonaktifkan Maintenance', '');
     document.getElementById('maintenanceSaveStatus').innerHTML = '<i class="fa-solid fa-circle-check ic-green"></i> Maintenance dinonaktifkan!';
     document.getElementById('toggleMaintenance').checked = false;
     setTimeout(() => { document.getElementById('maintenanceSaveStatus').innerHTML = ''; }, 3000);
@@ -743,11 +753,18 @@ function renderRLTable() {
 }
 
 window._setujuRL = async (id) => {
-  const ok = await _confirm('✅', 'Setujui Permintaan?', 'Pengguna ini akan bisa submit kembali (rate limit direset).', 'Setujui', false);
+  const ok = await _confirm('✅', 'Setujui Permintaan?', 'Rate limit user akan direset saat mereka submit berikutnya.', 'Setujui', false);
   if (!ok) return;
-  // Reset rate limit di sisi server tidak bisa langsung, tapi tandai approved
-  // Admin perlu beritahu user bahwa mereka bisa coba lagi (limit localStorage reset sendiri per jam)
+  // Ambil username dari dokumen
+  const snap = await getDoc(doc(db, "permintaan_rl", id));
+  const username = snap.exists() ? (snap.data().usernameLower || snap.data().username?.toLowerCase() || '') : '';
+  // Tandai approved di permintaan_rl
   await setDoc(doc(db, "permintaan_rl", id), { status: 'approved' }, { merge: true });
+  // Simpan flag reset di Firestore — index akan baca dan clear localStorage
+  if (username) {
+    await setDoc(doc(db, "config", "reset_rl_" + username), { aktif: true, approvedAt: serverTimestamp() });
+  }
+  _addLog('Setujui Reset Limit', `Username: ${username||id}`);
   kirimBrowserNotif('✅ Permintaan Disetujui', 'Rate limit request telah disetujui');
 };
 
@@ -755,6 +772,7 @@ window._tolakRL = async (id) => {
   const ok = await _confirm('❌', 'Tolak Permintaan?', 'Permintaan ini akan ditandai ditolak.', 'Tolak', true);
   if (!ok) return;
   await setDoc(doc(db, "permintaan_rl", id), { status: 'rejected' }, { merge: true });
+  _addLog('Tolak Reset Limit', `ID: ${id}`);
 };
 
 window._hapusRL = async (id) => {
@@ -762,6 +780,7 @@ window._hapusRL = async (id) => {
   if (!ok) return;
   const { deleteDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
   await deleteDoc(doc(db, "permintaan_rl", id));
+  _addLog('Hapus Request Reset Limit', `ID: ${id}`);
 };
 
 window._hapusSemuaRL = async () => {
@@ -770,6 +789,7 @@ window._hapusSemuaRL = async () => {
   const { deleteDoc, getDocs: gd, collection: col, query: q2 } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
   const snap = await gd(q2(col(db, "permintaan_rl")));
   await Promise.all(snap.docs.map(d => deleteDoc(d.ref)));
+  _addLog('Hapus Semua Request Reset Limit', `${snap.docs.length} data dihapus`);
 };
 
 // ===== PENGUMUMAN ADMIN =====
@@ -778,6 +798,7 @@ window._simpanPengumuman = async (aktif) => {
   const statusEl = document.getElementById('pengumumanStatus');
   try {
     await setDoc(doc(db, "config", "pengumuman"), { pesan: pesan || '', aktif }, { merge: true });
+    _addLog(aktif ? 'Tampilkan Pengumuman' : 'Sembunyikan Pengumuman', pesan.slice(0,60));
     statusEl.style.color = 'var(--primary)';
     statusEl.innerHTML = aktif ? '<i class="fa-solid fa-circle-check ic-green"></i> Pengumuman ditampilkan!' : '<i class="fa-solid fa-eye-slash ic-slate"></i> Pengumuman disembunyikan!';
   } catch(e) {
@@ -1120,14 +1141,15 @@ window._loadAnalitik = async () => {
   .tab-main { flex: 1; min-width: 0; width: 100%; }
   .tab-content { display: block; width: 100%; }
   .tab-content.hidden { display: none !important; }
-  /* Mobile: sidebar di atas, horizontal scroll */
+  /* Mobile: sidebar tetap di kiri, lebih kecil */
   @media(max-width: 700px) {
-    .dashboard-layout { flex-direction: column; gap: 12px; }
-    .sidebar { width: 100%; position: static; display: flex; flex-wrap: nowrap; gap: 6px; padding: 10px; overflow-x: auto; overflow-y: visible; max-height: none; border-radius: 16px; }
+    .dashboard-layout { flex-direction: row; gap: 10px; }
+    .sidebar { width: 48px; flex-shrink: 0; position: sticky; top: 10px; padding: 8px 6px; max-height: calc(100vh - 20px); overflow-y: auto; overflow-x: visible; border-radius: 14px; }
     .sidebar-title { display: none; }
-    .sidebar-divider { display: none; }
-    .tab-btn { width: auto; flex-shrink: 0; justify-content: center; font-size: 11px; padding: 8px 10px; white-space: nowrap; margin-bottom: 0; }
-    .tab-main { width: 100%; }
+    .sidebar-divider { margin: 3px 2px 6px; }
+    .tab-btn { width: 100%; justify-content: center; font-size: 0; padding: 10px 0; margin-bottom: 2px; border-radius: 10px; }
+    .tab-btn i { font-size: 16px !important; margin: 0; }
+    .tab-main { flex: 1; min-width: 0; width: 0; }
   }
   /* ===== FORM FIELDS ===== */
   .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
