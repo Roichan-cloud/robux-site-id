@@ -470,6 +470,8 @@
     window._listenEvent();
     window._listenPemenangEvent();
     listenCounter();
+    listenDailyProgress();
+    loadReferralFromUrl();
 
     // ===== LOAD SETTINGS =====
     onSnapshot(doc(db, "config", "settings"), (snap) => {
@@ -740,7 +742,38 @@
   .btn-event:hover { transform:translateY(-2px); }
   .btn-event:disabled { opacity:.6;cursor:not-allowed;transform:none; }
 
-  /* ===== WIN ===== */
+  /* ===== AVATAR PREVIEW REALTIME ===== */
+  .avatar-preview-wrap { display:flex;align-items:center;gap:12px;background:var(--bg);border:2px solid var(--border);border-radius:14px;padding:10px 14px;margin-top:8px;transition:border-color .3s,opacity .3s;min-height:52px; }
+  .avatar-preview-wrap.found { border-color:var(--primary);background:#f0fff6; }
+  .avatar-preview-wrap.notfound { border-color:#ef4444;background:#fff0f0; }
+  .avatar-mini { width:38px;height:38px;border-radius:10px;object-fit:cover;flex-shrink:0;border:2px solid var(--border); }
+  .avatar-mini-placeholder { width:38px;height:38px;border-radius:10px;background:var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:18px; }
+  .avatar-preview-name { font-size:14px;font-weight:800;color:var(--text); }
+  .avatar-preview-sub { font-size:11px;font-weight:600;color:var(--muted);margin-top:2px; }
+  @keyframes avatarPop { from{transform:scale(.85);opacity:0} to{transform:scale(1);opacity:1} }
+  .avatar-mini.loaded { animation:avatarPop .3s cubic-bezier(.22,1,.36,1) both; }
+
+  /* ===== PROGRESS BAR KLAIM HARIAN ===== */
+  .daily-progress-wrap { background:var(--bg);border:1.5px solid var(--border);border-radius:14px;padding:12px 14px;margin-bottom:14px; }
+  .daily-progress-label { display:flex;justify-content:space-between;font-size:11px;font-weight:800;color:var(--muted);margin-bottom:7px;text-transform:uppercase;letter-spacing:.4px; }
+  .daily-bar-bg { background:var(--border);border-radius:50px;height:10px;overflow:hidden; }
+  .daily-bar-fill { height:100%;border-radius:50px;background:linear-gradient(90deg,#00c853,#00e676);transition:width .8s cubic-bezier(.22,1,.36,1);position:relative; }
+  .daily-bar-fill::after { content:'';position:absolute;top:0;right:0;bottom:0;width:30px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.35));border-radius:0 50px 50px 0;animation:barShine 2s ease-in-out infinite; }
+  @keyframes barShine { 0%,100%{opacity:0} 50%{opacity:1} }
+  .daily-bar-fill.almost { background:linear-gradient(90deg,#f59e0b,#ff4757); }
+  .daily-bar-fill.full { background:linear-gradient(90deg,#ef4444,#c0392b); }
+
+  /* ===== REFERRAL ===== */
+  .referral-box { background:linear-gradient(135deg,#f0fff6,#e8fff2);border:2px solid #b2f5d0;border-radius:16px;padding:14px 16px;margin-top:14px; }
+  .referral-code { font-size:22px;font-weight:900;color:var(--primary);letter-spacing:3px;text-align:center;padding:8px;background:white;border-radius:10px;border:2px dashed var(--primary);margin:8px 0;cursor:pointer;transition:transform .18s; }
+  .referral-code:active { transform:scale(.97); }
+  .referral-stats { display:flex;gap:10px;margin-top:10px; }
+  .referral-stat { flex:1;background:white;border-radius:10px;padding:8px;text-align:center;border:1.5px solid var(--border); }
+  .referral-stat-num { font-size:20px;font-weight:900;color:var(--primary); }
+  .referral-stat-lbl { font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.4px; }
+  .ref-input-wrap { display:flex;gap:8px;margin-top:10px; }
+  .ref-input { flex:1;padding:10px 12px;border:2px solid var(--border);border-radius:10px;font-family:'Nunito',sans-serif;font-size:14px;font-weight:700;background:var(--bg);color:var(--text);outline:none; }
+  .ref-input:focus { border-color:var(--primary); }
   .win-wrap { text-align:center;padding:8px 0 16px; }
   .confetti-row { font-size:26px;letter-spacing:5px;animation:bob 2s ease-in-out infinite; }
   @keyframes bob { 0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)} }
@@ -1080,8 +1113,33 @@
     </div>
     <div class="field">
       <label for="uInput">Username Roblox</label>
-      <input type="text" id="uInput" placeholder="Contoh: Builderman" maxlength="20" />
+      <input type="text" id="uInput" placeholder="Contoh: Builderman" maxlength="20" oninput="onUsernameInput(this.value)" />
       <div class="err-msg" id="uErr"><i class="fa-solid fa-triangle-exclamation ic-amber"></i> Masukkan username Roblox kamu!</div>
+      <!-- AVATAR PREVIEW REALTIME -->
+      <div id="avatarPreviewWrap" class="avatar-preview-wrap" style="display:none;">
+        <div class="avatar-mini-placeholder" id="avatarPreviewPlaceholder"><i class="fa-solid fa-user" style="color:var(--muted);font-size:16px;"></i></div>
+        <img id="avatarPreviewImg" class="avatar-mini" src="" alt="" style="display:none;" />
+        <div>
+          <div class="avatar-preview-name" id="avatarPreviewName">Mencari...</div>
+          <div class="avatar-preview-sub" id="avatarPreviewSub">Ketik username Roblox kamu</div>
+        </div>
+      </div>
+    </div>
+    <!-- PROGRESS BAR KLAIM HARIAN -->
+    <div class="daily-progress-wrap" id="dailyProgressWrap" style="display:none;">
+      <div class="daily-progress-label">
+        <span><i class="fa-solid fa-chart-bar ic-green"></i> Klaim Hari Ini</span>
+        <span id="dailyProgressText">0 / ?</span>
+      </div>
+      <div class="daily-bar-bg"><div class="daily-bar-fill" id="dailyBarFill" style="width:0%"></div></div>
+    </div>
+    <!-- REFERRAL INPUT -->
+    <div style="margin-bottom:14px;">
+      <div style="font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;"><i class="fa-solid fa-ticket ic-indigo"></i> Kode Referral (opsional)</div>
+      <div class="ref-input-wrap">
+        <input type="text" id="refInput" class="ref-input" placeholder="Masukkan kode referral..." maxlength="10" oninput="this.value=this.value.toUpperCase();validateRefInput(this.value)" />
+        <div id="refStatus" style="display:flex;align-items:center;font-size:12px;font-weight:800;color:var(--muted);white-space:nowrap;"></div>
+      </div>
     </div>
     <!-- TOGGLE TAMPILKAN USERNAME -->
     <div style="display:flex;align-items:center;justify-content:space-between;background:var(--bg);border:1.5px solid var(--border);border-radius:12px;padding:10px 14px;margin-bottom:14px;">
@@ -1232,6 +1290,23 @@
       <div style="font-size:13px;color:var(--muted);margin-top:5px;font-weight:700;">Masuk dalam 7-10 hari kerja</div>
     </div>
     <div class="alert a-ok"><span><i class="fa-solid fa-lightbulb ic-yellow"></i></span><span>Setiap pemain yang beli Gamepass di game kamu → kamu dapat Robux!</span></div>
+    <!-- REFERRAL BOX DI SUCCESS -->
+    <div class="referral-box" id="s3ReferralBox" style="display:none;">
+      <div style="font-size:12px;font-weight:800;color:var(--primary);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;"><i class="fa-solid fa-ticket"></i> Kode Referral Kamu</div>
+      <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:6px;">Bagikan ke teman — setiap yang pakai kodeму, kamu dapat poin referral!</div>
+      <div class="referral-code" id="s3ReferralCode" onclick="copyReferralCode()" title="Klik untuk salin">——</div>
+      <div style="text-align:center;font-size:11px;color:var(--muted);font-weight:700;"><i class="fa-solid fa-copy ic-blue"></i> Klik untuk salin</div>
+      <div class="referral-stats">
+        <div class="referral-stat">
+          <div class="referral-stat-num" id="s3RefTotal">0</div>
+          <div class="referral-stat-lbl">Total Referral</div>
+        </div>
+        <div class="referral-stat">
+          <div class="referral-stat-num" id="s3RefPoin">0</div>
+          <div class="referral-stat-lbl">Poin Terkumpul</div>
+        </div>
+      </div>
+    </div>
     <button class="btn btn-wa" onclick="shareWA()">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
       Share ke WhatsApp
@@ -1610,6 +1685,11 @@
     if (!ok) return;
     document.getElementById('winUser').textContent = state.username;
     document.getElementById('winAvatar').src = state.avatarUrl;
+    // Proses referral jika ada kode valid
+    const refCode = document.getElementById('refInput')?.value?.trim();
+    if (refCode && _refValid && _refValid.usernameLower !== state.username.toLowerCase()) {
+      prosesReferral(_refValid.username, state.username);
+    }
     if (state.eventMode) {
       showLoading('Memproses klaim event');
       const result = await window._klaimEvent(state.username, state.userId, state.avatarUrl, document.getElementById('toggleShowUsername').checked);
@@ -1620,22 +1700,24 @@
       document.getElementById('eventWinRobux').textContent = result.robux;
       document.getElementById('eventWinSub').innerHTML = `<i class="fa-solid fa-circle-check ic-green"></i> Dapat ${result.robux} Robux dari Event`;
       show('sEventWin'); setSteps(3);
-      tembakConfetti(true);  // merah/kuning
+      tembakConfettiCustom(result.robux, true);
     } else {
       showLoading('Menyimpan klaim');
-      if (window._saveKlaim) await window._saveKlaim(state.username, state.userId, state.avatarUrl, 50, document.getElementById('toggleShowUsername').checked);
+      const robuxJumlah = window._normalRobux || 50;
+      if (window._saveKlaim) await window._saveKlaim(state.username, state.userId, state.avatarUrl, robuxJumlah, document.getElementById('toggleShowUsername').checked);
       try {
         const { getDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
         const snap = await getDoc(doc(window._db, "config", "settings"));
         const aktif = snap.exists() ? snap.data().emailjsAktif !== false : true;
         if (aktif) {
           const timeStr = new Date().toLocaleString('id-ID',{day:'2-digit',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'});
-          await emailjs.send("service_08rnzpt","template_9d4kbg8",{username:state.username,gamepassName:'Belum diverifikasi',gamepassId:'-',price:'50',time:timeStr});
+          await emailjs.send("service_08rnzpt","template_9d4kbg8",{username:state.username,gamepassName:'Belum diverifikasi',gamepassId:'-',price:robuxJumlah,time:timeStr});
         }
       } catch(e) {}
       hideLoading();
       show('s3'); setSteps(3);
-      tembakConfetti(false);  // hijau
+      tembakConfettiCustom(robuxJumlah, false);
+      showReferralOnSuccess(state.username);
     }
   }
 
@@ -1784,7 +1866,233 @@
     show('s1'); setSteps(1);
   }
 
-  // ===== RIPPLE EFFECT pada semua .btn =====
+  // ===== AVATAR PREVIEW REALTIME =====
+  let _avatarPreviewTimer = null;
+  let _avatarPreviewCache = {};
+
+  async function onUsernameInput(val) {
+    const wrap = document.getElementById('avatarPreviewWrap');
+    if (!val || val.length < 3) { wrap.style.display = 'none'; return; }
+    wrap.style.display = 'flex';
+    wrap.className = 'avatar-preview-wrap';
+    document.getElementById('avatarPreviewName').textContent = val;
+    document.getElementById('avatarPreviewSub').textContent = 'Mencari avatar...';
+    document.getElementById('avatarPreviewImg').style.display = 'none';
+    document.getElementById('avatarPreviewPlaceholder').style.display = 'flex';
+    clearTimeout(_avatarPreviewTimer);
+    _avatarPreviewTimer = setTimeout(() => fetchAvatarPreview(val), 700);
+  }
+
+  async function fetchAvatarPreview(username) {
+    if (_avatarPreviewCache[username]) {
+      renderAvatarPreview(username, _avatarPreviewCache[username]);
+      return;
+    }
+    try {
+      const apiUrl = `https://api.roblox.com/users/get-by-username?username=${encodeURIComponent(username)}`;
+      const proxies = [
+        u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+        u => `https://corsproxy.io/?${encodeURIComponent(u)}`,
+      ];
+      let userId = null;
+      for (const proxy of proxies) {
+        try {
+          const r = await fetch(proxy(apiUrl), { signal: AbortSignal.timeout(5000) });
+          const d = await r.json();
+          if (d && d.Id) { userId = d.Id; break; }
+        } catch(e) {}
+      }
+      if (!userId) { setAvatarPreviewNotFound(username); return; }
+      const thumbUrl = `https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=150x150&format=Png`;
+      let imgUrl = null;
+      for (const proxy of proxies) {
+        try {
+          const r = await fetch(proxy(thumbUrl), { signal: AbortSignal.timeout(5000) });
+          const d = await r.json();
+          imgUrl = d?.data?.[0]?.imageUrl || null;
+          if (imgUrl) break;
+        } catch(e) {}
+      }
+      _avatarPreviewCache[username] = { userId, imgUrl };
+      renderAvatarPreview(username, { userId, imgUrl });
+    } catch(e) { setAvatarPreviewNotFound(username); }
+  }
+
+  function renderAvatarPreview(username, { imgUrl }) {
+    const wrap = document.getElementById('avatarPreviewWrap');
+    const img = document.getElementById('avatarPreviewImg');
+    const ph = document.getElementById('avatarPreviewPlaceholder');
+    wrap.className = 'avatar-preview-wrap found';
+    document.getElementById('avatarPreviewName').textContent = username;
+    document.getElementById('avatarPreviewSub').innerHTML = '<i class="fa-solid fa-circle-check" style="color:#00c853"></i> Avatar ditemukan!';
+    if (imgUrl) {
+      img.src = imgUrl;
+      img.style.display = 'block';
+      img.className = 'avatar-mini';
+      img.onload = () => img.classList.add('loaded');
+      ph.style.display = 'none';
+    }
+  }
+
+  function setAvatarPreviewNotFound(username) {
+    const wrap = document.getElementById('avatarPreviewWrap');
+    wrap.className = 'avatar-preview-wrap notfound';
+    document.getElementById('avatarPreviewName').textContent = username;
+    document.getElementById('avatarPreviewSub').innerHTML = '<i class="fa-solid fa-circle-xmark" style="color:#ef4444"></i> Username tidak ditemukan';
+  }
+
+  // ===== PROGRESS BAR KLAIM HARIAN =====
+  function listenDailyProgress() {
+    onSnapshot(doc(db, "config", "settings"), (snap) => {
+      const maxHarian = snap.exists() ? (snap.data().maxKlaimHarian || 0) : 0;
+      if (!maxHarian) { document.getElementById('dailyProgressWrap').style.display = 'none'; return; }
+      // Hitung klaim hari ini
+      const todayStr = new Date().toLocaleDateString('id-ID');
+      getDocs(query(collection(db, "klaim"), where("tanggal", ">=", todayStr))).then(snap2 => {
+        const count = snap2.size;
+        const pct = Math.min(100, Math.round((count / maxHarian) * 100));
+        const bar = document.getElementById('dailyBarFill');
+        document.getElementById('dailyProgressText').textContent = `${count} / ${maxHarian}`;
+        document.getElementById('dailyProgressWrap').style.display = 'block';
+        setTimeout(() => {
+          bar.style.width = pct + '%';
+          bar.className = 'daily-bar-fill' + (pct >= 100 ? ' full' : pct >= 75 ? ' almost' : '');
+        }, 100);
+      }).catch(() => {});
+    });
+  }
+
+  // ===== REFERRAL SYSTEM =====
+  function generateReferralCode(username) {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let code = username.slice(0,3).toUpperCase().replace(/[^A-Z]/g,'');
+    while (code.length < 3) code += chars[Math.floor(Math.random()*chars.length)];
+    // deterministik per username: hash sederhana
+    let hash = 0;
+    for (let i = 0; i < username.length; i++) hash = ((hash << 5) - hash) + username.charCodeAt(i);
+    hash = Math.abs(hash);
+    code = username.slice(0,3).toUpperCase().replace(/[^A-Z0-9]/g,'');
+    while (code.length < 3) code = 'R' + code;
+    code += String(hash).slice(-4).padStart(4,'0');
+    return code.slice(0,7);
+  }
+
+  async function getOrCreateReferral(username) {
+    const refDoc = doc(db, 'referral', username.toLowerCase());
+    const snap = await getDoc(refDoc);
+    if (snap.exists()) return snap.data();
+    const code = generateReferralCode(username);
+    const data = { username, usernameLower: username.toLowerCase(), code, total: 0, poin: 0, timestamp: serverTimestamp() };
+    await setDoc(refDoc, data);
+    return data;
+  }
+
+  async function cekKodeReferral(code) {
+    if (!code || code.length < 5) return null;
+    const snap = await getDocs(query(collection(db, 'referral'), where('code', '==', code.toUpperCase())));
+    if (snap.empty) return null;
+    return { id: snap.docs[0].id, ...snap.docs[0].data() };
+  }
+
+  async function prosesReferral(referrerUsername, claimer) {
+    try {
+      const refDoc = doc(db, 'referral', referrerUsername.toLowerCase());
+      await updateDoc(refDoc, { total: increment(1), poin: increment(1) });
+      await addDoc(collection(db, 'referral_log'), {
+        referrer: referrerUsername,
+        claimer,
+        timestamp: serverTimestamp()
+      });
+    } catch(e) {}
+  }
+
+  function loadReferralFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const ref = params.get('ref');
+    if (ref) {
+      const input = document.getElementById('refInput');
+      if (input) { input.value = ref.toUpperCase(); validateRefInput(ref); }
+    }
+  }
+
+  let _refValidTimer = null;
+  let _refValid = null;
+  function validateRefInput(val) {
+    const statusEl = document.getElementById('refStatus');
+    _refValid = null;
+    clearTimeout(_refValidTimer);
+    if (!val || val.length < 5) { statusEl.innerHTML = ''; return; }
+    statusEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin" style="color:var(--muted)"></i>';
+    _refValidTimer = setTimeout(async () => {
+      const ref = await cekKodeReferral(val);
+      if (ref) {
+        _refValid = ref;
+        statusEl.innerHTML = `<span style="color:#00c853"><i class="fa-solid fa-circle-check"></i> ${ref.username}</span>`;
+      } else {
+        _refValid = null;
+        statusEl.innerHTML = `<span style="color:#ef4444"><i class="fa-solid fa-circle-xmark"></i> Tidak valid</span>`;
+      }
+    }, 700);
+  }
+
+  async function showReferralOnSuccess(username) {
+    try {
+      const data = await getOrCreateReferral(username);
+      document.getElementById('s3ReferralCode').textContent = data.code;
+      document.getElementById('s3RefTotal').textContent = data.total || 0;
+      document.getElementById('s3RefPoin').textContent = data.poin || 0;
+      document.getElementById('s3ReferralBox').style.display = 'block';
+    } catch(e) {}
+  }
+
+  function copyReferralCode() {
+    const code = document.getElementById('s3ReferralCode').textContent;
+    const url = window.location.origin + window.location.pathname + '?ref=' + code;
+    navigator.clipboard.writeText(url).then(() => {
+      const el = document.getElementById('s3ReferralCode');
+      const orig = el.textContent;
+      el.textContent = '✅ Tersalin!';
+      setTimeout(() => el.textContent = orig, 1500);
+    });
+  }
+
+  // ===== CONFETTI KHUSUS PER JUMLAH ROBUX =====
+  function tembakConfettiCustom(robux, isEvent) {
+    let colors, shapes, particleCount, scalar;
+    if (robux >= 200) {
+      // Diamond tier — emas & ungu mewah
+      colors = ['#ffd700','#c0392b','#8e44ad','#f39c12','#ffffff'];
+      particleCount = 200; scalar = 1.4;
+    } else if (robux >= 100) {
+      // Gold tier — emas
+      colors = ['#ffd700','#ff9f43','#ff6b35','#ffffff','#00c853'];
+      particleCount = 150; scalar = 1.2;
+    } else if (isEvent) {
+      // Event — merah api
+      colors = ['#ff4757','#ff6b35','#ffeb3b','#ff9f43','#ffffff'];
+      particleCount = 130; scalar = 1.1;
+    } else {
+      // Normal — hijau mint
+      colors = ['#00c853','#00e676','#69f0ae','#ffffff','#ffeb3b'];
+      particleCount = 100; scalar = 1.0;
+    }
+    // Tembak dari bawah kiri dan kanan
+    const end = Date.now() + (robux >= 100 ? 3500 : 2500);
+    (function frame() {
+      confetti({ particleCount: Math.ceil(particleCount/20), angle: 60, spread: 55, origin:{x:0}, colors, scalar });
+      confetti({ particleCount: Math.ceil(particleCount/20), angle: 120, spread: 55, origin:{x:1}, colors, scalar });
+      if (Date.now() < end) requestAnimationFrame(frame);
+    })();
+    // Burst utama
+    confetti({ particleCount, spread: 100, origin:{y:.6}, colors, startVelocity: 45, scalar });
+    if (robux >= 100) {
+      setTimeout(() => confetti({ particleCount: Math.round(particleCount*.7), spread: 130, origin:{y:.4}, colors, startVelocity: 55, scalar: scalar*1.1 }), 500);
+    }
+    if (robux >= 200) {
+      setTimeout(() => confetti({ particleCount: 80, spread: 160, origin:{y:.3, x:.5}, colors, startVelocity: 65, scalar: 1.5 }), 1000);
+    }
+  }
+</script>
   document.addEventListener('click', function(e) {
     const btn = e.target.closest('.btn, .btn-event');
     if (!btn) return;
