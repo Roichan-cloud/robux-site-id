@@ -287,6 +287,8 @@
       });
     } catch(e) {}
   };
+
+  window._listenEvent = function() {
     try {
       onSnapshot(doc(db, "config", "event"), (snap) => {
         if (!snap.exists() || !snap.data().active) { hideEvent(); return; }
