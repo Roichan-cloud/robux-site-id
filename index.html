@@ -139,6 +139,15 @@
     return `<div class="lb-rank"><div class="lb-rank-badge ${cls}">${i + 1}</div></div>`;
   }
 
+  function buildLbItem(d, i, cls = '') {
+    const masked = maskUsername(d.username||'???', d.showUsername);
+    return `<div class="lb-item${cls ? ' '+cls : ''}" data-key="${(d.username||'').toLowerCase()}_${d.timestamp?.toMillis?.()??i}">
+      ${rankBadge(i)}
+      <div class="lb-name">${masked}</div>
+      <div class="lb-badge"><i class="fa-solid fa-gem ic-cyan"></i> ${d.robux||50} Rbx</div>
+    </div>`;
+  }
+
   function renderLeaderboardAnimated(docs) {
     const el = document.getElementById('leaderboardList');
     if (!el) return;
@@ -146,45 +155,46 @@
       el.innerHTML = `<div style="text-align:center;color:var(--muted);font-size:13px;font-weight:700;padding:12px 0;">Jadilah yang pertama klaim! 🎉</div>`;
       _lbPrevUsernames = []; return;
     }
-    const newUsernames = docs.map(d => (d.username||'').toLowerCase());
+    const newKeys = docs.map((d,i) => `${(d.username||'').toLowerCase()}_${d.timestamp?.toMillis?.()??i}`);
     const isFirst = _lbPrevUsernames.length === 0;
 
-    const buildItems = (list, enterSet) => list.map((d, i) => {
-      const masked = maskUsername(d.username||'???', d.showUsername);
-      const isNew = enterSet.has((d.username||'').toLowerCase());
-      return `<div class="lb-item${isNew?' lb-enter':''}">
-        ${rankBadge(i)}
-        <div class="lb-name">${masked}</div>
-        <div class="lb-badge"><i class="fa-solid fa-gem ic-cyan"></i> ${d.robux||50} Rbx</div>
-      </div>`;
-    }).join('');
-
     if (isFirst) {
-      // Render satu-satu dengan delay
-      el.innerHTML = docs.map((d, i) => {
-        const masked = maskUsername(d.username||'???', d.showUsername);
-        return `<div class="lb-item lb-enter" style="animation-delay:${i*90}ms">
-          ${rankBadge(i)}
-          <div class="lb-name">${masked}</div>
-          <div class="lb-badge"><i class="fa-solid fa-gem ic-cyan"></i> ${d.robux||50} Rbx</div>
-        </div>`;
-      }).join('');
-    } else {
-      const added = new Set(newUsernames.filter(u => !_lbPrevUsernames.includes(u)));
-      const removed = _lbPrevUsernames.filter(u => !newUsernames.includes(u));
-      if (added.size === 0 && removed.length === 0) { _lbPrevUsernames = newUsernames; return; }
-
-      // Exit item yang hilang
-      el.querySelectorAll('.lb-item').forEach(item => {
-        const nameEl = item.querySelector('.lb-name');
-        if (!nameEl) return;
-        const prefix = nameEl.textContent.slice(0,2).toLowerCase();
-        if (removed.some(u => u.startsWith(prefix))) item.classList.add('lb-exit');
+      el.innerHTML = docs.map((d, i) => buildLbItem(d, i, 'lb-new')).join('');
+      // stagger delay
+      el.querySelectorAll('.lb-item.lb-new').forEach((item, i) => {
+        item.style.animationDelay = `${i * 80}ms`;
       });
-
-      setTimeout(() => { el.innerHTML = buildItems(docs, added); }, 360);
+      _lbPrevUsernames = newKeys;
+      return;
     }
-    _lbPrevUsernames = newUsernames;
+
+    const addedKeys = newKeys.filter(k => !_lbPrevUsernames.includes(k));
+    if (addedKeys.length === 0) { _lbPrevUsernames = newKeys; return; }
+
+    // Ada item baru — animasi scroll down:
+    // 1. Render item baru di posisi 1 dengan lb-new
+    // 2. Render item lama (yang masih ada) dengan lb-shift (geser turun)
+    // 3. Item yang hilang (rank 5/10) tidak dirender
+    el.style.overflow = 'hidden';
+    const oldItems = Array.from(el.querySelectorAll('.lb-item'));
+    const keepCount = docs.length - addedKeys.length; // berapa item lama yang masih muncul
+
+    // Tandai item lama yang akan keluar (rank terakhir yang hilang)
+    // Jumlah yang hilang = addedKeys.length
+    const exitCount = Math.min(addedKeys.length, oldItems.length);
+    oldItems.slice(oldItems.length - exitCount).forEach(item => {
+      item.classList.add('lb-exit');
+    });
+
+    setTimeout(() => {
+      // Rebuild semua dengan animasi
+      el.innerHTML = docs.map((d, i) => {
+        const key = `${(d.username||'').toLowerCase()}_${d.timestamp?.toMillis?.()??i}`;
+        const cls = addedKeys.includes(key) ? 'lb-new' : 'lb-shift';
+        return buildLbItem(d, i, cls);
+      }).join('');
+      _lbPrevUsernames = newKeys;
+    }, 420);
   }
 
   // ===== CEK STATUS PERMINTAAN =====
@@ -279,6 +289,20 @@
   // ===== EVENT =====
   let _eventCountdownTimer = null;
 
+  let _evLbPrevKeys = [];
+
+  function buildEvLbItem(d, i, cls = '') {
+    const nama = maskUsername(d.username || '???', d.showUsername);
+    const medals = ['🥇','🥈','🥉'];
+    const rankDisplay = medals[i] || `<span style="font-weight:900;color:#64748b;">${i+1}</span>`;
+    return `<div class="lb-item${cls ? ' '+cls : ''}" data-key="${(d.username||'').toLowerCase()}_${d.timestamp?.toMillis?.()??i}"
+      style="background:white;border-radius:12px;padding:10px 12px;border:1.5px solid #ffe082;margin-bottom:6px;">
+      <div style="width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">${rankDisplay}</div>
+      <div style="flex:1;font-size:14px;font-weight:800;color:#1a2e1f;">${nama}</div>
+      <div style="font-size:12px;font-weight:800;color:#f59e0b;"><i class="fa-solid fa-gem ic-cyan"></i> ${d.robux||'?'} Rbx</div>
+    </div>`;
+  }
+
   window._listenPemenangEvent = function() {
     try {
       const q = query(collection(db, "event_klaim"), orderBy("timestamp", "desc"), limit(10));
@@ -288,22 +312,39 @@
         const section = document.getElementById('pemenangEventSection');
         const list = document.getElementById('pemenangList');
         if (!section || !list) return;
-        if (docs.length === 0) { section.classList.add('hidden'); return; }
+        if (docs.length === 0) { section.classList.add('hidden'); _evLbPrevKeys = []; return; }
         section.classList.remove('hidden');
-        // Tampilkan event ID dari data pertama
         const eventId = docs[0]?.eventId || '';
         const eventIdEl = document.getElementById('pemenangEventId');
         if (eventIdEl) eventIdEl.textContent = eventId ? `Event: ${eventId}` : 'Event terbaru';
-        list.innerHTML = docs.map((d, i) => {
-          const nama = maskUsername(d.username || '???', d.showUsername);
-          const rankBg = '#e2e8f0';
-          const rankColor = '#64748b';
-          return `<div style="display:flex;align-items:center;gap:10px;background:white;border-radius:12px;padding:10px 12px;border:1.5px solid #ffe082;">
-            <div style="width:26px;height:26px;background:${rankBg};border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;color:${rankColor};flex-shrink:0;">${i+1}</div>
-            <div style="flex:1;font-size:14px;font-weight:800;color:#1a2e1f;">${nama}</div>
-            <div style="font-size:12px;font-weight:800;color:#f59e0b;"><i class="fa-solid fa-gem ic-cyan"></i> ${d.robux||'?'} Rbx</div>
-          </div>`;
-        }).join('');
+
+        const newKeys = docs.map((d,i) => `${(d.username||'').toLowerCase()}_${d.timestamp?.toMillis?.()??i}`);
+        const isFirst = _evLbPrevKeys.length === 0;
+
+        if (isFirst) {
+          list.innerHTML = docs.map((d, i) => buildEvLbItem(d, i, 'lb-new')).join('');
+          list.querySelectorAll('.lb-item.lb-new').forEach((item, i) => {
+            item.style.animationDelay = `${i * 60}ms`;
+          });
+          _evLbPrevKeys = newKeys;
+          return;
+        }
+
+        const addedKeys = newKeys.filter(k => !_evLbPrevKeys.includes(k));
+        if (addedKeys.length === 0) { _evLbPrevKeys = newKeys; return; }
+
+        // Exit item terakhir yang hilang
+        const oldItems = Array.from(list.querySelectorAll('.lb-item'));
+        const exitCount = Math.min(addedKeys.length, oldItems.length);
+        oldItems.slice(oldItems.length - exitCount).forEach(item => item.classList.add('lb-exit'));
+
+        setTimeout(() => {
+          list.innerHTML = docs.map((d, i) => {
+            const key = `${(d.username||'').toLowerCase()}_${d.timestamp?.toMillis?.()??i}`;
+            return buildEvLbItem(d, i, addedKeys.includes(key) ? 'lb-new' : 'lb-shift');
+          }).join('');
+          _evLbPrevKeys = newKeys;
+        }, 420);
       });
     } catch(e) {}
   };
@@ -462,9 +503,9 @@
         const w = warna[snap.data().kategori] || '#3b82f6';
         el.style.background = w;
         el.querySelector('#broadcastPesanUser').textContent = snap.data().pesan;
-        el.classList.remove('hidden');
+        if (window._showBanner) window._showBanner(el); else { el.classList.remove('hidden'); }
       } else {
-        el.classList.add('hidden');
+        if (window._hideBanner) window._hideBanner(el); else { el.classList.add('hidden'); }
       }
     });
 
@@ -496,9 +537,9 @@
       const text = document.getElementById('pengumumanText');
       if (snap.exists() && snap.data().aktif && snap.data().pesan) {
         text.textContent = snap.data().pesan;
-        banner.classList.remove('hidden');
+        if (window._showBanner) window._showBanner(banner); else { banner.classList.remove('hidden'); }
       } else {
-        banner.classList.add('hidden');
+        if (window._hideBanner) window._hideBanner(banner); else { banner.classList.add('hidden'); }
       }
     });
 
@@ -563,14 +604,14 @@
   /* ===== SMOOTH TRANSITIONS ===== */
   .card-wrapper { position:relative; }
   .card { background:var(--white);border:1.5px solid var(--border);border-radius:24px;padding:28px 24px;margin:20px 0;box-shadow:var(--shadow); }
-  .card.enter-right { animation: slideInRight .35s cubic-bezier(.25,.8,.25,1) both; }
-  .card.enter-left  { animation: slideInLeft  .35s cubic-bezier(.25,.8,.25,1) both; }
-  .card.exit-left   { animation: slideOutLeft  .25s ease-in both; }
-  .card.exit-right  { animation: slideOutRight .25s ease-in both; }
-  @keyframes slideInRight  { from{opacity:0;transform:translateX(60px)}  to{opacity:1;transform:translateX(0)} }
-  @keyframes slideInLeft   { from{opacity:0;transform:translateX(-60px)} to{opacity:1;transform:translateX(0)} }
-  @keyframes slideOutLeft  { from{opacity:1;transform:translateX(0)} to{opacity:0;transform:translateX(-60px)} }
-  @keyframes slideOutRight { from{opacity:1;transform:translateX(0)} to{opacity:0;transform:translateX(60px)} }
+  .card.enter-right { animation: slideInRight .4s cubic-bezier(.22,1,.36,1) both; }
+  .card.enter-left  { animation: slideInLeft  .4s cubic-bezier(.22,1,.36,1) both; }
+  .card.exit-left   { animation: slideOutLeft  .22s ease-in both; }
+  .card.exit-right  { animation: slideOutRight .22s ease-in both; }
+  @keyframes slideInRight  { from{opacity:0;transform:translateX(72px) scale(.97)}  to{opacity:1;transform:translateX(0) scale(1)} }
+  @keyframes slideInLeft   { from{opacity:0;transform:translateX(-72px) scale(.97)} to{opacity:1;transform:translateX(0) scale(1)} }
+  @keyframes slideOutLeft  { from{opacity:1;transform:translateX(0) scale(1)} to{opacity:0;transform:translateX(-50px) scale(.97)} }
+  @keyframes slideOutRight { from{opacity:1;transform:translateX(0) scale(1)} to{opacity:0;transform:translateX(50px) scale(.97)} }
 
   .c-title { font-size:1.15rem;font-weight:800;color:var(--text);margin-bottom:4px;display:flex;align-items:center;gap:8px; }
   .c-sub { font-size:13px;color:var(--muted);margin-bottom:22px;font-weight:600; }
@@ -590,7 +631,17 @@
   .err-msg.show { display:block; }
   /* HONEYPOT */
   .hp-field { position:absolute;left:-9999px;opacity:0;pointer-events:none; }
-  .btn { width:100%;padding:15px;border:none;border-radius:14px;font-family:'Nunito',sans-serif;font-size:16px;font-weight:800;cursor:pointer;transition:transform .18s,box-shadow .18s,opacity .2s;margin-top:10px;display:flex;align-items:center;justify-content:center;gap:8px; }
+  .btn { width:100%;padding:15px;border:none;border-radius:14px;font-family:'Nunito',sans-serif;font-size:16px;font-weight:800;cursor:pointer;transition:transform .18s,box-shadow .18s,opacity .2s;margin-top:10px;display:flex;align-items:center;justify-content:center;gap:8px;position:relative;overflow:hidden; }
+
+  /* Ripple effect */
+  .btn .ripple { position:absolute;border-radius:50%;background:rgba(255,255,255,0.45);transform:scale(0);animation:rippleAnim .55s linear; pointer-events:none; }
+  @keyframes rippleAnim { to { transform:scale(4); opacity:0; } }
+
+  /* Banner slide-in dari atas */
+  @keyframes bannerSlideIn { from{opacity:0;transform:translateY(-22px) scale(.97)} to{opacity:1;transform:translateY(0) scale(1)} }
+  @keyframes bannerSlideOut { from{opacity:1;transform:translateY(0) scale(1)} to{opacity:0;transform:translateY(-16px) scale(.97)} }
+  .banner-visible { animation: bannerSlideIn .4s cubic-bezier(.22,1,.36,1) both !important; }
+  .banner-hiding  { animation: bannerSlideOut .28s ease-in both !important; }
   .btn:hover { transform:translateY(-2px); }
   .btn:active { transform:translateY(0); }
   .btn:disabled { opacity:.55;cursor:not-allowed;transform:none!important; }
@@ -623,12 +674,14 @@
   .leaderboard-card { background:var(--white);border:1.5px solid var(--border);border-radius:20px;padding:20px;margin:16px 0;box-shadow:var(--shadow);overflow:hidden; }
   .lb-title { font-size:14px;font-weight:900;color:var(--text);margin-bottom:14px;display:flex;align-items:center;gap:7px; }
   #leaderboardList { overflow:hidden; }
-  .lb-item { display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);transition:transform .4s cubic-bezier(.25,.8,.25,1),opacity .35s ease; }
+  .lb-item { display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border); }
   .lb-item:last-child { border-bottom:none; }
-  .lb-item.lb-enter { animation: lbIn .45s cubic-bezier(.25,.8,.25,1) both; }
-  .lb-item.lb-exit { animation: lbOut .35s ease-in both; }
-  @keyframes lbIn { from{opacity:0;transform:translateY(-36px)} to{opacity:1;transform:translateY(0)} }
-  @keyframes lbOut { from{opacity:1;transform:translateY(0)} to{opacity:0;transform:translateY(36px)} }
+  @keyframes lbSlideIn { from{opacity:0;transform:translateY(-48px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes lbSlideDown { from{transform:translateY(0)} to{transform:translateY(100%)} }
+  @keyframes lbShiftDown { from{transform:translateY(-100%)} to{transform:translateY(0)} }
+  .lb-item.lb-new { animation: lbSlideIn .5s cubic-bezier(.25,.8,.25,1) both; }
+  .lb-item.lb-shift { animation: lbShiftDown .5s cubic-bezier(.25,.8,.25,1) both; }
+  .lb-item.lb-exit { animation: lbSlideDown .4s ease-in both; }
   .lb-rank { min-width:28px;display:flex;align-items:center;justify-content:center; }
   .lb-rank-badge { width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;flex-shrink:0; }
   .lb-rank-1 { background:var(--bg);color:var(--text);border:2px solid var(--border); }
@@ -644,12 +697,16 @@
   /* ===== COUNTER FLIP (odometer) ===== */
   .counter-box { display:inline-flex;align-items:center;gap:8px;background:white;border:2px solid var(--border);border-radius:50px;padding:8px 18px;margin-top:14px;box-shadow:0 4px 14px rgba(0,200,83,0.12);font-size:13px;font-weight:800;color:var(--text); }
   .counter-dot { width:8px;height:8px;background:var(--primary);border-radius:50%;animation:pulse 1.5s ease-in-out infinite; }
-  .counter-digits { display:inline-flex;align-items:center;overflow:hidden;height:1.2em;position:relative; }
-  .counter-digit-wrap { position:relative;overflow:hidden;height:1.2em;display:inline-block; }
-  .counter-digit { display:block;color:var(--primary);font-size:16px;font-weight:900;line-height:1.2em;transition:transform .45s cubic-bezier(.25,.8,.25,1); }
-  .counter-digit.flip-out { transform:translateY(100%); }
-  .counter-digit.flip-in { transform:translateY(-100%); animation:digitFlip .45s cubic-bezier(.25,.8,.25,1) forwards; }
-  @keyframes digitFlip { from{transform:translateY(-100%)} to{transform:translateY(0)} }
+  .counter-digits { display:inline-flex;align-items:center;gap:1px; }
+  .counter-digit-wrap { position:relative;overflow:hidden;height:1.25em;display:inline-block;min-width:.6em;text-align:center; }
+  .counter-digit { display:block;color:var(--primary);font-size:16px;font-weight:900;line-height:1.25em; }
+  .counter-digit.flip-in { animation:digitSlotIn .42s cubic-bezier(.22,1,.36,1) both; }
+  @keyframes digitSlotIn {
+    0%  { transform:translateY(-110%); opacity:0; }
+    60% { transform:translateY(8%);    opacity:1; }
+    80% { transform:translateY(-4%); }
+    100%{ transform:translateY(0);     opacity:1; }
+  }
 
   #frontContent { transition: opacity .3s ease, transform .3s ease; }
   #frontContent.hide { opacity: 0; transform: translateY(-10px); pointer-events: none; height: 0; overflow: hidden; margin: 0; }
@@ -813,12 +870,12 @@
     <div class="modal-msg" id="modal3Soal">Berapa harga Gamepass yang harus kamu buat?</div>
     <div style="background:var(--bg);border:2px solid var(--border);border-radius:14px;padding:14px;margin-bottom:16px;">
       <div style="font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;"><i class="fa-solid fa-keyboard ic-blue"></i> Ketik jawabanmu</div>
-      <input type="number" id="modal3Input" placeholder="Contoh: 72"
+      <input type="number" id="modal3Input" placeholder="Ketik jawabanmu..."
         style="width:100%;padding:12px 14px;background:white;border:2px solid var(--border);border-radius:10px;font-family:'Nunito',sans-serif;font-size:22px;font-weight:900;color:var(--text);text-align:center;outline:none;transition:border-color .2s;"
         onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='var(--border)'"
         onkeydown="if(event.key==='Enter')cekJawabanModal3()" oninput="resetModal3Error()" />
       <div id="modal3Error" style="font-size:12px;font-weight:800;color:#ef4444;text-align:center;margin-top:8px;min-height:18px;display:none;">
-        <i class="fa-solid fa-circle-xmark"></i> Jawaban salah! Mohon ubah gamepass Anda menjadi <strong id="modal3HargaHint"></strong> Robux.
+        <i class="fa-solid fa-circle-xmark"></i> Jawaban salah! Perhatikan lagi tutorial di atas.
       </div>
     </div>
     <div class="modal-btns">
@@ -1635,12 +1692,9 @@
       document.getElementById('modalKonfirmasi3').classList.add('hidden');
       if (_modal3Resolve) { _modal3Resolve(true); _modal3Resolve = null; }
     } else {
-      const errEl = document.getElementById('modal3Error');
-      errEl.style.display = 'block';
-      const inp = document.getElementById('modal3Input');
-      inp.style.borderColor = '#ef4444';
-      inp.value = '';
-      inp.focus();
+      // Jawaban salah — tutup modal, kembali ke step 2
+      document.getElementById('modalKonfirmasi3').classList.add('hidden');
+      if (_modal3Resolve) { _modal3Resolve(false); _modal3Resolve = null; }
     }
   }
 
@@ -1717,6 +1771,40 @@
     }
     show('s1'); setSteps(1);
   }
+
+  // ===== RIPPLE EFFECT pada semua .btn =====
+  document.addEventListener('click', function(e) {
+    const btn = e.target.closest('.btn, .btn-event');
+    if (!btn) return;
+    const circle = document.createElement('span');
+    circle.classList.add('ripple');
+    const rect = btn.getBoundingClientRect();
+    const size = Math.max(rect.width, rect.height);
+    circle.style.width = circle.style.height = size + 'px';
+    circle.style.left = (e.clientX - rect.left - size/2) + 'px';
+    circle.style.top  = (e.clientY - rect.top  - size/2) + 'px';
+    btn.appendChild(circle);
+    circle.addEventListener('animationend', () => circle.remove());
+  });
+
+  // ===== BANNER ANIMASI HELPER =====
+  function showBanner(el) {
+    if (!el) return;
+    el.classList.remove('banner-hiding', 'hidden');
+    void el.offsetWidth; // reflow
+    el.classList.add('banner-visible');
+  }
+  function hideBanner(el) {
+    if (!el || el.classList.contains('hidden')) return;
+    el.classList.remove('banner-visible');
+    el.classList.add('banner-hiding');
+    el.addEventListener('animationend', () => {
+      el.classList.add('hidden');
+      el.classList.remove('banner-hiding');
+    }, { once: true });
+  }
+  window._showBanner = showBanner;
+  window._hideBanner = hideBanner;
 </script>
 </body>
 </html>
